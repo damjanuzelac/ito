@@ -4,7 +4,6 @@ import { STORE_KEYS } from '../../lib/constants/store-keys'
 
 // Onboarding category constants
 export const ONBOARDING_CATEGORIES = {
-  SIGN_UP: 'sign-up',
   PERMISSIONS: 'permissions',
   SET_UP: 'set-up',
   TRY_IT: 'try-it',
@@ -19,10 +18,8 @@ interface OnboardingState {
   totalOnboardingSteps: number
   onboardingCompleted: boolean
   onboardingCategory: OnboardingCategory
-  referralSource: string | null
   incrementOnboardingStep: () => void
   decrementOnboardingStep: () => void
-  setReferralSource: (source: string) => void
   setOnboardingCompleted: () => void
   resetOnboarding: () => void
   initializeOnboarding: () => void
@@ -30,9 +27,6 @@ interface OnboardingState {
 
 // Step name constants
 export const STEP_NAMES = {
-  CREATE_ACCOUNT: 'create_account',
-  REFERRAL_SOURCE: 'referral_source',
-  DATA_CONTROL: 'data_control',
   PERMISSIONS: 'permissions',
   MICROPHONE_TEST: 'microphone_test',
   KEYBOARD_TEST: 'keyboard_test',
@@ -44,9 +38,6 @@ export const STEP_NAMES = {
 
 // Order here matters for onboarding flow
 export const STEP_NAMES_ARRAY = [
-  STEP_NAMES.CREATE_ACCOUNT,
-  STEP_NAMES.REFERRAL_SOURCE,
-  STEP_NAMES.DATA_CONTROL,
   STEP_NAMES.PERMISSIONS,
   STEP_NAMES.MICROPHONE_TEST,
   STEP_NAMES.KEYBOARD_TEST,
@@ -57,19 +48,17 @@ export const STEP_NAMES_ARRAY = [
 ]
 
 const getOnboardingCategory = (onboardingStep: number): OnboardingCategory => {
-  if (onboardingStep < 3) return ONBOARDING_CATEGORIES.SIGN_UP
-  if (onboardingStep < 4) return ONBOARDING_CATEGORIES.PERMISSIONS
-  if (onboardingStep < 7) return ONBOARDING_CATEGORIES.SET_UP
+  if (onboardingStep < 1) return ONBOARDING_CATEGORIES.PERMISSIONS
+  if (onboardingStep < 4) return ONBOARDING_CATEGORIES.SET_UP
   return ONBOARDING_CATEGORIES.TRY_IT
 }
 
 export const getOnboardingCategoryIndex = (
   onboardingCategory: OnboardingCategory,
 ): number => {
-  if (onboardingCategory === ONBOARDING_CATEGORIES.SIGN_UP) return 0
-  if (onboardingCategory === ONBOARDING_CATEGORIES.PERMISSIONS) return 1
-  if (onboardingCategory === ONBOARDING_CATEGORIES.SET_UP) return 2
-  return 3
+  if (onboardingCategory === ONBOARDING_CATEGORIES.PERMISSIONS) return 0
+  if (onboardingCategory === ONBOARDING_CATEGORIES.SET_UP) return 1
+  return 2
 }
 
 const getStepName = (step: number): string => {
@@ -110,7 +99,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
     totalOnboardingSteps,
     onboardingCompleted: initialState.onboardingCompleted,
     onboardingCategory: getOnboardingCategory(initialState.onboardingStep),
-    referralSource: null,
     incrementOnboardingStep: () =>
       set(state => {
         const onboardingStep = Math.min(
@@ -128,7 +116,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
           step_name: getStepName(state.onboardingStep),
           category: state.onboardingCategory,
           total_steps: state.totalOnboardingSteps,
-          referral_source: state.referralSource || undefined,
         })
 
         // Track viewing of new step
@@ -138,7 +125,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
             step_name: getStepName(onboardingStep),
             category: onboardingCategory,
             total_steps: state.totalOnboardingSteps,
-            referral_source: state.referralSource || undefined,
           })
         }
 
@@ -159,7 +145,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
           step_name: getStepName(onboardingStep),
           category: onboardingCategory,
           total_steps: state.totalOnboardingSteps,
-          referral_source: state.referralSource || undefined,
         })
 
         syncToStore(newState)
@@ -185,7 +170,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
         // Update user properties to mark onboarding as completed
         analytics.updateUserProperties({
           onboarding_completed: true,
-          referral_source: state.referralSource || undefined,
         })
 
         const newState = { onboardingCompleted: true }
@@ -197,15 +181,6 @@ export const useOnboardingStore = create<OnboardingState>(set => {
         const newState = { onboardingStep: 0, onboardingCompleted: false }
         analytics.updateUserProperties({
           onboarding_completed: false,
-        })
-        syncToStore(newState)
-        return newState
-      }),
-    setReferralSource: (source: string) =>
-      set(_state => {
-        const newState = { referralSource: source }
-        analytics.updateUserProperties({
-          referral_source: source,
         })
         syncToStore(newState)
         return newState

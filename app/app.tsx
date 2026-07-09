@@ -8,16 +8,13 @@ import {
   STEP_NAMES_ARRAY,
   useOnboardingStore,
 } from '@/app/store/useOnboardingStore'
-import { useAuth } from '@/app/components/auth/useAuth'
 import { WindowContextProvider } from '@/lib/window'
-import { Auth0Provider } from '@/app/components/auth/Auth0Provider'
 import { useDeviceChangeListener } from './hooks/useDeviceChangeListener'
 import { verifyStoredMicrophone } from './media/microphone'
 import { useEffect } from 'react'
 
 const MainApp = () => {
   const { onboardingCompleted, onboardingStep } = useOnboardingStore()
-  const { isAuthenticated } = useAuth()
   useDeviceChangeListener()
 
   useEffect(() => {
@@ -30,55 +27,46 @@ const MainApp = () => {
   const shouldEnableShortcutGlobally =
     onboardingCompleted || onboardingSetupCompleted
 
-  // If authenticated and onboarding completed, show main app
-  if (isAuthenticated && onboardingCompleted) {
-    window.api.send(
-      'electron-store-set',
-      'settings.isShortcutGloballyEnabled',
-      shouldEnableShortcutGlobally,
-    )
-    return <HomeKit />
-  }
-
-  // If authenticated but onboarding not completed, continue onboarding
   window.api.send(
     'electron-store-set',
     'settings.isShortcutGloballyEnabled',
     shouldEnableShortcutGlobally,
   )
+
+  // Once onboarding is completed, show the main app
+  if (onboardingCompleted) {
+    return <HomeKit />
+  }
+
   return <WelcomeKit />
 }
 
 export default function App() {
   return (
-    <Auth0Provider>
-      <HashRouter>
-        <Routes>
-          {/* Route for the pill window */}
-          <Route
-            path="/pill"
-            element={
-              <>
-                <Pill />
-              </>
-            }
-          />
+    <HashRouter>
+      <Routes>
+        {/* Route for the pill window */}
+        <Route
+          path="/pill"
+          element={
+            <>
+              <Pill />
+            </>
+          }
+        />
 
-          {/* Default route for the main application window */}
-          <Route
-            path="/"
-            element={
-              <>
-                <WindowContextProvider
-                  titlebar={{ title: 'Ito', icon: appIcon }}
-                >
-                  <MainApp />
-                </WindowContextProvider>
-              </>
-            }
-          />
-        </Routes>
-      </HashRouter>
-    </Auth0Provider>
+        {/* Default route for the main application window */}
+        <Route
+          path="/"
+          element={
+            <>
+              <WindowContextProvider titlebar={{ title: 'Ito', icon: appIcon }}>
+                <MainApp />
+              </WindowContextProvider>
+            </>
+          }
+        />
+      </Routes>
+    </HashRouter>
   )
 }

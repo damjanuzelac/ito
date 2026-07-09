@@ -24,11 +24,6 @@ import {
   concatenateAudioChunks,
   prepareAudioForTranscription,
 } from '../../utils/audioProcessing.js'
-import {
-  serverTimingCollector,
-  ServerTimingEventName,
-} from '../timing/ServerTimingCollector.js'
-import { kUser } from '../../auth/userContext.js'
 
 export class TranscribeStreamV2Handler {
   private readonly MODE_CHANGE_GRACE_PERIOD_MS = 100
@@ -51,21 +46,8 @@ export class TranscribeStreamV2Handler {
 
     const streamEndTime = Date.now()
 
-    // Extract interaction ID and user ID for timing
-    const interactionId = initialConfig?.interactionId
-    const userId = context?.values.get(kUser)?.sub
-
-    // Initialize timing collection
-    serverTimingCollector.startInteraction(interactionId, userId)
-    serverTimingCollector.startTiming(
-      ServerTimingEventName.TOTAL_PROCESSING,
-      interactionId,
-    )
-
     // Check if client cancelled the stream
     if (context?.signal.aborted) {
-      serverTimingCollector.clearInteraction(interactionId)
-
       console.log(
         `🚫 [${new Date().toISOString()}] Stream cancelled by client, aborting processing`,
       )
@@ -88,23 +70,15 @@ export class TranscribeStreamV2Handler {
     const fullAudio = concatenateAudioChunks(audioChunks)
 
     try {
-      // Time audio processing
-      const fullAudioWAV = interactionId
-        ? await serverTimingCollector.timeAsync(
-            ServerTimingEventName.AUDIO_PROCESSING,
-            () => prepareAudioForTranscription(fullAudio),
-            interactionId,
-          )
-        : prepareAudioForTranscription(fullAudio)
+      const fullAudioWAV = prepareAudioForTranscription(fullAudio)
 
       // Extract configuration
       const asrConfig = this.extractAsrConfig(mergedConfig)
 
-      // Time transcription
-      let transcript = await serverTimingCollector.timeAsync(
-        ServerTimingEventName.ASR_TRANSCRIPTION,
-        () => this.transcribeAudioData(fullAudioWAV, asrConfig, context),
-        interactionId,
+      let transcript = await this.transcribeAudioData(
+        fullAudioWAV,
+        asrConfig,
+        context,
       )
 
       // Prepare context and settings
@@ -123,18 +97,7 @@ export class TranscribeStreamV2Handler {
         asrConfig.noSpeechThreshold,
       )
 
-      // Time transcript adjustment (only happens in EDIT mode)
-      // transcript = await serverTimingCollector.timeAsync(
-      //   ServerTimingEventName.LLM_ADJUSTMENT,
-      //   () =>
-      //     this.adjustTranscriptForMode(
-      //       transcript,
-      //       mode,
-      //       windowContext,
-      //       advancedSettings,
-      //     ),
-      //   interactionId,
-      // )
+      // Transcript adjustment only happens in EDIT mode
       transcript = await this.adjustTranscriptForMode(
         transcript,
         mode,
@@ -144,13 +107,6 @@ export class TranscribeStreamV2Handler {
 
       const duration = Date.now() - startTime
 
-      // Finalize timing
-      serverTimingCollector.endTiming(
-        ServerTimingEventName.TOTAL_PROCESSING,
-        interactionId,
-      )
-      serverTimingCollector.finalizeInteraction(interactionId)
-
       console.log(
         `✅ [${new Date().toISOString()}] TranscribeStreamV2 completed in ${duration}ms`,
       )
@@ -159,11 +115,6 @@ export class TranscribeStreamV2Handler {
         transcript,
       })
     } catch (error: any) {
-      // Clear timing on error
-      if (interactionId) {
-        serverTimingCollector.clearInteraction(interactionId)
-      }
-
       if (error instanceof ConnectError) {
         throw error
       }
@@ -309,7 +260,10 @@ export class TranscribeStreamV2Handler {
     noSpeechThreshold: number,
   ) {
     return {
-      asrModel: this.resolveOrDefault(asrModel, DEFAULT_ADVANCED_SETTINGS.asrModel),
+      asrModel: this.resolveOrDefault(
+        asrModel,
+        DEFAULT_ADVANCED_SETTINGS.asrModel,
+      ),
       asrProvider: this.resolveOrDefault(
         asrProvider,
         DEFAULT_ADVANCED_SETTINGS.asrProvider,
@@ -390,14 +344,13 @@ export class TranscribeStreamV2Handler {
     const userPrompt = createUserPromptWithContext(transcript, windowContext)
     const llmProvider = getLlmProvider(advancedSettings.llmProvider)
 
-    const adjustedTranscript = await serverTimingCollector.timeAsync(
-      ServerTimingEventName.LLM_ADJUSTMENT,
-      () =>
-        llmProvider.adjustTranscript(userPromptPrefix + '\n' + userPrompt, {
-          temperature: advancedSettings.llmTemperature,
-          model: advancedSettings.llmModel,
-          prompt: ITO_MODE_SYSTEM_PROMPT[mode],
-        }),
+    const adjustedTranscript = await llmProvider.adjustTranscript(
+      userPromptPrefix + '\n' + userPrompt,
+      {
+        temperature: advancedSettings.llmTemperature,
+        model: advancedSettings.llmModel,
+        prompt: ITO_MODE_SYSTEM_PROMPT[mode],
+      },
     )
 
     console.log(

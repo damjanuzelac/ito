@@ -29,8 +29,7 @@ import { getKeyDisplay } from '@/app/utils/keyboard'
 import { createStereo48kWavFromMonoPCM } from '@/app/utils/audioUtils'
 import { KeyName } from '@/lib/types/keyboard'
 import { usePlatform } from '@/app/hooks/usePlatform'
-import { ProUpgradeDialog } from '../ProUpgradeDialog'
-import useBillingState from '@/app/hooks/useBillingState'
+import { checkLocalServerHealth } from '@/app/utils/healthCheck'
 
 // Interface for interaction statistics
 interface InteractionStats {
@@ -64,13 +63,7 @@ const StatCard = ({
   )
 }
 
-interface HomeContentProps {
-  isStartingTrial?: boolean
-}
-
-export default function HomeContent({
-  isStartingTrial = false,
-}: HomeContentProps) {
+export default function HomeContent() {
   const { getItoModeShortcuts } = useSettingsStore()
   const keyboardShortcut = getItoModeShortcuts(ItoMode.TRANSCRIBE)[0].keys
   const { user } = useAuthStore()
@@ -89,91 +82,24 @@ export default function HomeContent({
     totalWords: 0,
     averageWPM: 0,
   })
-  const [showProDialog, setShowProDialog] = useState(false)
-  const billingState = useBillingState()
+  const [serverHealthy, setServerHealthy] = useState(true)
 
-  // Persist "has shown trial dialog" flag in electron-store to survive remounts
-  const [hasShownTrialDialog, setHasShownTrialDialogState] = useState(() => {
-    try {
-      const authStore = window.electron?.store?.get('auth') || {}
-      const value = authStore?.hasShownTrialDialog === true
-      return value
-    } catch {
-      return false
+  // Periodically check that the local Ito server is reachable
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      const result = await checkLocalServerHealth()
+      if (!cancelled) {
+        setServerHealthy(result.isHealthy)
+      }
     }
-  })
-
-  const setHasShownTrialDialog = useCallback((value: boolean) => {
-    try {
-      setHasShownTrialDialogState(value)
-      window.api.send('electron-store-set', 'auth.hasShownTrialDialog', value)
-    } catch {
-      console.warn('Failed to persist hasShownTrialDialog flag')
+    check()
+    const interval = setInterval(check, 10000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
     }
   }, [])
-
-  // Show trial dialog when trial starts
-  useEffect(() => {
-    if (
-      billingState.isTrialActive &&
-      billingState.proStatus === 'free_trial' &&
-      !hasShownTrialDialog &&
-      !billingState.isLoading
-    ) {
-      setShowProDialog(true)
-      setHasShownTrialDialog(true)
-    }
-  }, [
-    billingState.isTrialActive,
-    billingState.proStatus,
-    billingState.isLoading,
-    isStartingTrial,
-    hasShownTrialDialog,
-    setHasShownTrialDialog,
-  ])
-
-  // Listen for trial start event to refresh billing state
-  useEffect(() => {
-    const offTrialStarted = window.api.on('trial-started', async () => {
-      await billingState.refresh()
-    })
-
-    const offBillingSuccess = window.api.on(
-      'billing-session-completed',
-      async () => {
-        await billingState.refresh()
-      },
-    )
-
-    return () => {
-      offTrialStarted?.()
-      offBillingSuccess?.()
-    }
-  }, [billingState])
-
-  // Reset dialog flag when trial is no longer active or user becomes pro
-  // Only reset if we're certain the trial has ended (not just during loading/refreshing)
-  useEffect(() => {
-    if (billingState.isLoading) {
-      // Don't reset during loading to avoid race conditions
-      return
-    }
-
-    const shouldReset =
-      billingState.proStatus === 'active_pro' ||
-      (billingState.proStatus === 'none' && !billingState.isTrialActive)
-
-    if (shouldReset && hasShownTrialDialog) {
-      setHasShownTrialDialog(false)
-    }
-  }, [
-    billingState.proStatus,
-    billingState.isTrialActive,
-    billingState.isLoading,
-    hasShownTrialDialog,
-    setHasShownTrialDialog,
-  ])
-
   // Calculate statistics from interactions
   const calculateStats = useCallback(
     (interactions: Interaction[]): InteractionStats => {
@@ -590,6 +516,14 @@ export default function HomeContent({
     <div className="w-full h-full flex flex-col">
       {/* Fixed Header Content */}
       <div className="flex-shrink-0 px-24">
+        {!serverHealthy && (
+          <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+            The local Ito server is not reachable. Start it with{' '}
+            <code className="font-mono">docker compose up</code> in the{' '}
+            <code className="font-mono">server</code> directory — dictation
+            won't work until it's running.
+          </div>
+        )}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-medium">
@@ -857,9 +791,6 @@ export default function HomeContent({
           )
         )}
       </div>
-
-      {/* Pro Upgrade Dialog */}
-      <ProUpgradeDialog open={showProDialog} onOpenChange={setShowProDialog} />
     </div>
   )
 }

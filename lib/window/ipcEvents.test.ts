@@ -1,16 +1,11 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach } from 'bun:test'
 import { registerIPC } from './ipcEvents'
 
 const mockIpcMain = (await import('electron')).ipcMain as any
 const mockSystemPreferences = (await import('electron'))
   .systemPreferences as any
 const mockBrowserWindow = (await import('electron')).BrowserWindow as any
-let mockGetCurrentUserId = (await import('../main/store'))
-  .getCurrentUserId as any
 const mockNotesTable = (await import('../main/sqlite/repo')).NotesTable as any
-let mockEnsureValidTokens = (await import('../auth/events'))
-  .ensureValidTokens as any
-const mockElectronLog = (await import('electron-log')).default as any
 
 describe('IPC Events Critical Business Logic Tests', () => {
   let registeredHandlers: Map<string, (...args: any[]) => any>
@@ -28,28 +23,6 @@ describe('IPC Events Critical Business Logic Tests', () => {
     }
 
     registerIPC()
-  })
-
-  describe('Token Refresh Error Handling', () => {
-    test('should handle token refresh errors gracefully', async () => {
-      const handler = registeredHandlers.get('refresh-tokens')
-      const error = new Error('Token refresh failed')
-
-      const originalEnsureValidTokens = mockEnsureValidTokens
-      mockEnsureValidTokens = async () => {
-        throw error
-      }
-
-      expect(handler).toBeDefined()
-      const result = await handler!()
-
-      expect(result).toEqual({
-        success: false,
-        error: 'No refresh token available',
-      })
-
-      mockEnsureValidTokens = originalEnsureValidTokens
-    })
   })
 
   describe('Microphone Permission Logic', () => {
@@ -143,44 +116,14 @@ describe('IPC Events Critical Business Logic Tests', () => {
       mockNotesTable.findAll = originalFindAll
     })
 
-    test('should handle missing user ID for data deletion', async () => {
-      const handler = registeredHandlers.get('delete-user-data')
-
-      // Mock electron-log to suppress the log output for this test
-      const originalError = mockElectronLog.error
-      mockElectronLog.error = () => {}
-
-      const originalGetCurrentUserId = mockGetCurrentUserId
-      mockGetCurrentUserId = () => null
-
-      expect(handler).toBeDefined()
-      const result = await handler!({})
-
-      expect(result).toBe(false)
-
-      // Restore original functions
-      mockGetCurrentUserId = originalGetCurrentUserId
-      mockElectronLog.error = originalError
-    })
-
-    test('update-advanced-settings should call the correct service', async () => {
-      const mockUpdateAdvancedSettings = mock(async (settings: any) => settings)
-      const grpcClient = {
-        updateAdvancedSettings: mockUpdateAdvancedSettings,
-      }
-
-      mock.module('../clients/grpcClient', () => ({
-        grpcClient,
-      }))
-
+    test('update-advanced-settings is local-only and returns null', async () => {
       const handler = registeredHandlers.get('update-advanced-settings')
       const mockSettings = { setting1: 'value1', setting2: 'value2' }
 
       expect(handler).toBeDefined()
       const result = await handler!({}, mockSettings)
 
-      expect(result).toEqual(mockSettings)
-      expect(mockUpdateAdvancedSettings).toHaveBeenCalledWith(mockSettings)
+      expect(result).toBeNull()
     })
   })
 })

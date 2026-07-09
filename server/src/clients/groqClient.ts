@@ -25,17 +25,21 @@ export const itoVocabulary = ['Ito', 'Hey Ito']
  * A TypeScript client for interacting with the Groq API, inspired by your Python implementation.
  */
 class GroqClient implements LlmProvider {
-  private readonly _client: Groq
+  private readonly _client: Groq | null
   private readonly _userCommandModel: string
   private readonly _isValid: boolean
 
   constructor(apiKey: string, userCommandModel: string) {
-    if (!apiKey) {
+    this._client = apiKey ? new Groq({ apiKey }) : null
+    this._userCommandModel = userCommandModel
+    this._isValid = Boolean(apiKey)
+  }
+
+  private get client(): Groq {
+    if (!this._client) {
       throw new ClientApiKeyError(ClientProvider.GROQ)
     }
-    this._client = new Groq({ apiKey })
-    this._userCommandModel = userCommandModel
-    this._isValid = true
+    return this._client
   }
 
   /**
@@ -65,7 +69,7 @@ class GroqClient implements LlmProvider {
       'Adjust and improve this transcript for clarity and accuracy.'
 
     try {
-      const completion = await this._client.chat.completions.create({
+      const completion = await this.client.chat.completions.create({
         messages: [
           {
             role: 'system',
@@ -123,7 +127,7 @@ class GroqClient implements LlmProvider {
       // Create a concise but effective transcription prompt
       const transcriptionPrompt = createTranscriptionPrompt(fullVocabulary)
 
-      const transcription = await this._client.audio.transcriptions.create({
+      const transcription = await this.client.audio.transcriptions.create({
         // The toFile helper correctly handles buffers for multipart/form-data uploads.
         // Providing a filename with the correct extension is crucial for the API.
         file,
@@ -174,15 +178,7 @@ class GroqClient implements LlmProvider {
 }
 
 // --- Singleton Instance ---
-// Create and export a single, pre-configured instance of the client for use across the server.
-// Only check for GROQ_API_KEY since ASR model is now provided per-request
-if (!process.env.GROQ_API_KEY) {
-  console.error(
-    'FATAL: GROQ_API_KEY is not set in the .env file. The application cannot start.',
-  )
-  process.exit(1)
-}
-const apiKey = process.env.GROQ_API_KEY
-
+// Groq is optional: without GROQ_API_KEY the client reports unavailable and the
+// server falls back to the local Whisper provider for transcription.
 // Note: userCommandModel is empty for now as we are only using transcription.
-export const groqClient = new GroqClient(apiKey, '')
+export const groqClient = new GroqClient(process.env.GROQ_API_KEY || '', '')

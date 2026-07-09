@@ -19,8 +19,6 @@ const mockCryptoPartial = {
   randomUUID: mock(() => 'mock-uuid-123'),
 }
 
-const mockCrypto = mockCryptoPartial
-
 mock.module('crypto', () => ({
   default: mockCryptoPartial,
   ...mockCryptoPartial,
@@ -65,24 +63,8 @@ describe('KV-backed Store', () => {
 })
 
 describe('Auth helpers', () => {
-  test('getCurrentUserId should read from userProfile', async () => {
-    const { default: store, getCurrentUserId } = await import('./store')
-    store.set('userProfile', { id: 'user-123', name: 'T' })
-    expect(getCurrentUserId()).toBe('user-123')
-  })
-
-  test('createNewAuthState should use crypto functions', async () => {
-    const { createNewAuthState } = await import('./store')
-    const s = createNewAuthState()
-    expect(mockCrypto.randomBytes).toHaveBeenCalledWith(32)
-    expect(mockCrypto.randomBytes).toHaveBeenCalledWith(16)
-    expect(mockCrypto.createHash).toHaveBeenCalledWith('sha256')
-    expect(mockCrypto.randomUUID).toHaveBeenCalled()
-    expect(s).toEqual({
-      id: 'mock-uuid-123',
-      codeVerifier: 'mock-base64url-string',
-      codeChallenge: 'mock-hash-digest',
-      state: 'mock-hex-string',
-    })
+  test('getCurrentUserId always returns the fixed self-hosted id', async () => {
+    const { getCurrentUserId } = await import('./store')
+    expect(getCurrentUserId()).toBe('self-hosted')
   })
 })

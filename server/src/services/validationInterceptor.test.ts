@@ -2,10 +2,7 @@ import { describe, it, expect, mock } from 'bun:test'
 import { ConnectError } from '@connectrpc/connect'
 import { createValidator } from '@bufbuild/protovalidate'
 import { createValidationInterceptor } from './validationInterceptor.js'
-import {
-  AudioChunkSchema,
-  CreateNoteRequestSchema,
-} from '../generated/ito_pb.js'
+import { AudioChunkSchema, ContextInfoSchema } from '../generated/ito_pb.js'
 import { create } from '@bufbuild/protobuf'
 
 describe('ValidationInterceptor', () => {
@@ -13,17 +10,17 @@ describe('ValidationInterceptor', () => {
 
   describe('unary request validation', () => {
     it('should pass valid unary requests through', async () => {
-      const validRequest = create(CreateNoteRequestSchema, {
-        id: 'test-id',
-        interactionId: 'interaction-id',
-        content: 'Test note content',
+      const validRequest = create(ContextInfoSchema, {
+        windowTitle: 'Test window',
+        appName: 'Test app',
+        contextText: 'Test context',
       })
 
       const mockNext = mock(() => Promise.resolve({ message: 'success' }))
       const mockReq = {
         method: {
           kind: 'unary' as const,
-          input: CreateNoteRequestSchema,
+          input: ContextInfoSchema,
         },
         message: validRequest,
       }
@@ -36,17 +33,17 @@ describe('ValidationInterceptor', () => {
 
     it('should pass through requests without validation rules', async () => {
       // Create a request with empty fields (no validation rules for strings)
-      const request = create(CreateNoteRequestSchema, {
-        id: '',
-        interactionId: '',
-        content: '',
+      const request = create(ContextInfoSchema, {
+        windowTitle: '',
+        appName: '',
+        contextText: '',
       })
 
       const mockNext = mock(() => Promise.resolve({ message: 'success' }))
       const mockReq = {
         method: {
           kind: 'unary' as const,
-          input: CreateNoteRequestSchema,
+          input: ContextInfoSchema,
         },
         message: request,
       }
@@ -194,7 +191,7 @@ describe('ValidationInterceptor', () => {
       const mockReq = {
         method: {
           kind: 'server_streaming' as const,
-          input: CreateNoteRequestSchema,
+          input: ContextInfoSchema,
         },
         message: {},
       }
@@ -210,7 +207,7 @@ describe('ValidationInterceptor', () => {
       const mockReq = {
         method: {
           kind: 'bidi_streaming' as const,
-          input: CreateNoteRequestSchema,
+          input: ContextInfoSchema,
         },
         message: {},
       }

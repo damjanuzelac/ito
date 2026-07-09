@@ -2,9 +2,10 @@ services:
   ito-grpc-server:
     build: .
     ports:
-      - '$PORT:$PORT'
+      - '3000:3000'
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     volumes:
       - .:/app
       - /app/node_modules
@@ -12,42 +13,19 @@ services:
     container_name: ito-server
     restart: always
     depends_on:
-      - db
+      - whisper
     environment:
       NODE_ENV: development
+      LOCAL_WHISPER_BASE_URL: http://whisper:8000
 
-  db:
-    image: postgres:16
-    container_name: ito-postgres
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: ito-whisper
     restart: always
-    environment:
-      POSTGRES_USER: '$DB_USER'
-      POSTGRES_PASSWORD: '$DB_PASS'
-      POSTGRES_DB: '$DB_NAME'
     ports:
-      - '$DB_PORT:$DB_PORT'
+      - '8000:8000'
     volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  minio:
-    image: minio/minio:latest
-    container_name: ito-minio
-    restart: always
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: '$S3_ACCESS_KEY_ID'
-      MINIO_ROOT_PASSWORD: '$S3_SECRET_ACCESS_KEY'
-    ports:
-      - '9000:9000' # S3 API
-      - '9001:9001' # MinIO Console
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      - whisper_models:/home/ubuntu/.cache/huggingface/hub
 
 volumes:
-  pgdata:
-  minio_data:
+  whisper_models:

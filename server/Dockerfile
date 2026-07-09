@@ -10,9 +10,6 @@ RUN bun install
 # Copy source code
 COPY . .
 
-# Make sure migration script is executable
-RUN chmod +x scripts/migrate.sh
-
 # Generate proto types during the build
 RUN bun run proto:gen:server
 

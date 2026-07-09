@@ -1,4 +1,9 @@
-# [DEPRECATED] - This project is no longer maintained 
+# [DEPRECATED] - This project is no longer maintained
+
+> **Note**: This fork has been simplified into a **single-user, local-first build**. There are no
+> accounts, no billing, no telemetry and no cloud sync. Transcription runs against a **local
+> Whisper server** by default (Groq cloud remains an optional provider via `GROQ_API_KEY`).
+> See [Quick Start](#-quick-start) below.
 
 # Ito
 
@@ -74,9 +79,7 @@
    - **Microphone access**: Required for voice input
    - **Accessibility access**: Required for global keyboard shortcuts and text insertion
 
-4. **Set up authentication**:
-   - Sign in with Google, Apple, Github through Auth0 or create a local account
-   - Complete the guided onboarding process
+4. **Complete the guided onboarding process** — no account needed; everything is stored locally.
 
 ### First Use
 
@@ -108,12 +111,12 @@ cp .env.example .env
 ./build-binaries.sh
 
 # Set up and start the server (required for transcription)
+# This starts the Ito gRPC server plus a local Whisper (speaches) container.
+# No API keys needed; add GROQ_API_KEY to server/.env only if you want the
+# optional Groq cloud provider or edit mode ("hey ito" commands).
 cd server
-cp .env.example .env  # Edit with your API keys
-bun install
-bun run local-db-up   # Start PostgreSQL database
-bun run db:migrate    # Run database migrations
-bun run dev           # Start development server
+cp .env.example .env  # Optional: adjust local Whisper model / add GROQ_API_KEY
+docker compose up --build
 cd ..
 
 # Start the Electron app (in a new terminal)

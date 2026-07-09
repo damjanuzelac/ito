@@ -189,10 +189,6 @@ const deleteCompleteUserData = async (userId: string) => {
     // Delete local SQLite data
     await deleteUserData(userId)
 
-    // Delete server-side data - server will extract userId from authenticated token
-    const { grpcClient } = await import('../../clients/grpcClient')
-    await grpcClient.deleteUserData()
-
     console.info(`Successfully completed data deletion for user: ${userId}`)
   } catch (error) {
     console.error(`Failed to complete data deletion for user: ${userId}`, error)
