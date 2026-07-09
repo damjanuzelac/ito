@@ -55,11 +55,6 @@ const api = {
     ipcRenderer.on('key-event', handler)
     return () => ipcRenderer.removeListener('key-event', handler)
   },
-  // Auth methods
-  generateNewAuthState: () => ipcRenderer.invoke('generate-new-auth-state'),
-  exchangeAuthCode: (data: any) =>
-    ipcRenderer.invoke('exchange-auth-code', data),
-  logout: () => ipcRenderer.invoke('logout'),
   // Pill window mouse event control
   setPillMouseEvents: (ignore: boolean, options?: { forward?: boolean }) =>
     ipcRenderer.invoke('pill-set-mouse-events', ignore, options),
@@ -132,21 +127,6 @@ const api = {
 
     delete: (id: string) => ipcRenderer.invoke('interactions:delete', id),
   },
-  trial: {
-    complete: () => ipcRenderer.invoke('trial:complete'),
-    startAfterOnboarding: () =>
-      ipcRenderer.invoke('start-trial-after-onboarding'),
-  },
-  billing: {
-    createCheckoutSession: () =>
-      ipcRenderer.invoke('billing:create-checkout-session'),
-    confirmSession: (sessionId: string) =>
-      ipcRenderer.invoke('billing:confirm-session', { sessionId }),
-    status: () => ipcRenderer.invoke('billing:status'),
-    cancelSubscription: () => ipcRenderer.invoke('billing:cancel-subscription'),
-    reactivateSubscription: () =>
-      ipcRenderer.invoke('billing:reactivate-subscription'),
-  },
   openMailto: (email: string) => ipcRenderer.invoke('open-mailto', email),
   loginItem: {
     setSettings: (enabled: boolean) =>
@@ -166,32 +146,10 @@ const api = {
   notifyOnboardingUpdate: (onboarding: any) =>
     ipcRenderer.send('onboarding-update', onboarding),
 
-  // Send user auth updates to pill window
-  notifyUserAuthUpdate: (authUser: any) =>
-    ipcRenderer.send('user-auth-update', authUser),
-
-  // Analytics device ID methods
-  'analytics:get-device-id': () =>
-    ipcRenderer.invoke('analytics:get-device-id'),
-  'analytics:resolve-install-token': () =>
-    ipcRenderer.invoke('analytics:resolve-install-token'),
-
   // Onboarding state for current user
   getOnboardingState: () => ipcRenderer.invoke('get-onboarding-state'),
 
-  notifyLoginSuccess: (
-    profile: any,
-    idToken: string | null,
-    accessToken: string | null,
-  ) => {
-    return ipcRenderer.invoke('notify-login-success', {
-      profile,
-      idToken,
-      accessToken,
-    })
-  },
-
-  // Delete user data from both local and server databases
+  // Delete locally stored user data
   deleteUserData: () => {
     return ipcRenderer.invoke('delete-user-data')
   },
@@ -203,14 +161,6 @@ const api = {
   // Check if the local server is healthy and accessible
   checkServerHealth: () => {
     return ipcRenderer.invoke('check-server-health')
-  },
-
-  updater: {
-    onUpdateAvailable: callback => ipcRenderer.on('update-available', callback),
-    onUpdateDownloaded: callback =>
-      ipcRenderer.on('update-downloaded', callback),
-    installUpdate: () => ipcRenderer.send('install-update'),
-    getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
   },
 
   // Platform info

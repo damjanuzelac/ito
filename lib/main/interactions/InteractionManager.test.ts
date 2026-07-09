@@ -25,11 +25,9 @@ mock.module('electron-store', () => {
 })
 
 // Mock the store
-const mockMainStore = {
-  get: mock(() => ({ id: 'test-user-123' })),
-}
+const mockGetCurrentUserId = mock(() => 'test-user-123')
 mock.module('../store', () => ({
-  default: mockMainStore,
+  getCurrentUserId: mockGetCurrentUserId,
 }))
 
 // Mock electron-log
@@ -42,7 +40,6 @@ mock.module('electron-log', () => ({
 }))
 
 import { InteractionManager } from './InteractionManager'
-import { STORE_KEYS } from '../../constants/store-keys'
 
 describe('InteractionManager', () => {
   let interactionManager: InteractionManager
@@ -52,8 +49,8 @@ describe('InteractionManager', () => {
     mockDbRun.mockClear()
     mockDbGet.mockClear()
     mockDbAll.mockClear()
-    mockMainStore.get.mockClear()
-    mockMainStore.get.mockReturnValue({ id: 'test-user-123' })
+    mockGetCurrentUserId.mockClear()
+    mockGetCurrentUserId.mockReturnValue('test-user-123')
   })
 
   describe('Interaction Lifecycle', () => {
@@ -127,20 +124,6 @@ describe('InteractionManager', () => {
         16000,
       )
 
-      expect(mockDbRun).not.toHaveBeenCalled()
-    })
-
-    test('should skip creation when no user ID', async () => {
-      mockMainStore.get.mockReturnValue(null)
-
-      interactionManager.initialize()
-      await interactionManager.createInteraction(
-        'test',
-        Buffer.from('audio'),
-        16000,
-      )
-
-      expect(mockMainStore.get).toHaveBeenCalledWith(STORE_KEYS.USER_PROFILE)
       expect(mockDbRun).not.toHaveBeenCalled()
     })
   })

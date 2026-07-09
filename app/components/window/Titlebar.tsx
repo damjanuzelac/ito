@@ -2,22 +2,16 @@ import { useWindowContext } from './WindowContext'
 import React, { useState, useEffect } from 'react'
 import { OnboardingTitlebar } from './OnboardingTitlebar'
 import { useOnboardingStore } from '@/app/store/useOnboardingStore'
-import { UserCircle, PanelLeft, CogFour, Logout } from '@mynaui/icons-react'
+import { UserCircle, PanelLeft, CogFour } from '@mynaui/icons-react'
 import { useMainStore } from '@/app/store/useMainStore'
-import { useAuthStore } from '@/app/store/useAuthStore'
-import { useAuth } from '@/app/components/auth/useAuth'
 
 export const Titlebar = () => {
   const { onboardingCompleted } = useOnboardingStore()
-  const { isAuthenticated } = useAuthStore()
-  const showOnboarding = !onboardingCompleted || !isAuthenticated
+  const showOnboarding = !onboardingCompleted
   const { toggleNavExpanded, setCurrentPage, setSettingsPage, navExpanded } =
     useMainStore()
-  const { logoutUser } = useAuth()
   const wcontext = useWindowContext().window
   const [showUserDropdown, setShowUserDropdown] = useState(false)
-  const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
-  const [isUpdateDownloaded, setUpdateDownloaded] = useState(false)
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
@@ -33,27 +27,6 @@ export const Titlebar = () => {
     return () => {}
   }, [showUserDropdown])
 
-  useEffect(() => {
-    // Check current update status on mount
-    window.api.updater.getUpdateStatus().then(status => {
-      if (status.updateAvailable) {
-        setIsUpdateAvailable(true)
-      }
-      if (status.updateDownloaded) {
-        setUpdateDownloaded(true)
-      }
-    })
-
-    // Listen for future update events
-    window.api.updater.onUpdateAvailable(() => {
-      setIsUpdateAvailable(true)
-    })
-
-    window.api.updater.onUpdateDownloaded(() => {
-      setUpdateDownloaded(true)
-    })
-  }, [])
-
   const toggleUserDropdown = (e: React.MouseEvent) => {
     e.stopPropagation()
     setShowUserDropdown(!showUserDropdown)
@@ -63,16 +36,6 @@ export const Titlebar = () => {
     e.stopPropagation()
     setCurrentPage('settings')
     setSettingsPage('account')
-    setShowUserDropdown(false)
-  }
-
-  const handleSignOutClick = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    try {
-      await logoutUser()
-    } catch (error) {
-      console.error('Logout failed:', error)
-    }
     setShowUserDropdown(false)
   }
 
@@ -143,27 +106,6 @@ export const Titlebar = () => {
             zIndex: 10,
           }}
         >
-          {isUpdateAvailable && (
-            <button
-              className={`titlebar-action-btn bg-sky-800 text-white px-3 py-1 rounded-md font-semibold ${
-                isUpdateDownloaded
-                  ? 'hover:bg-sky-700 cursor-pointer'
-                  : 'cursor-not-allowed opacity-70'
-              }`}
-              disabled={!isUpdateDownloaded}
-              onClick={() => {
-                if (
-                  confirm(
-                    'Are you sure you want to install the update? The app will restart.',
-                  )
-                ) {
-                  window.api.updater.installUpdate()
-                }
-              }}
-            >
-              {isUpdateDownloaded ? 'Install Update' : 'Downloading Update...'}
-            </button>
-          )}
           <div className="relative">
             <div
               className="titlebar-action-btn hover:bg-slate-200"
@@ -191,17 +133,10 @@ export const Titlebar = () => {
               <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                 <button
                   onClick={handleSettingsClick}
-                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-t-lg cursor-pointer"
+                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-lg cursor-pointer"
                 >
                   <CogFour className="w-4 h-4" />
                   Settings
-                </button>
-                <button
-                  onClick={handleSignOutClick}
-                  className="w-full px-2 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-b-lg cursor-pointer"
-                >
-                  <Logout className="w-4 h-4" />
-                  Sign Out
                 </button>
               </div>
             )}

@@ -1,6 +1,5 @@
 import { InteractionsTable } from '../sqlite/repo'
-import mainStore from '../store'
-import { STORE_KEYS } from '../../constants/store-keys'
+import { getCurrentUserId } from '../store'
 import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow } from 'electron'
@@ -44,8 +43,7 @@ export class InteractionManager {
     }
 
     try {
-      const userProfile = mainStore.get(STORE_KEYS.USER_PROFILE) as any
-      const userId = userProfile?.id
+      const userId = getCurrentUserId()
 
       if (!userId) {
         log.warn(

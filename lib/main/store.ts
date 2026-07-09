@@ -5,7 +5,6 @@ import { ItoMode } from '@/app/generated/ito_pb.js'
 import { ITO_MODE_SHORTCUT_DEFAULTS } from '../constants/keyboard-defaults.js'
 import { KeyName, normalizeLegacyKey } from '../types/keyboard.js'
 import { KeyValueStore } from './sqlite/repo'
-import { resolveDefaultKeys } from '../utils/settings.js'
 
 export interface KeyboardShortcutConfig {
   id: string
@@ -37,13 +36,6 @@ export interface SettingsStore {
   email: string
 }
 
-export interface AuthState {
-  id: string
-  codeVerifier: string
-  codeChallenge: string
-  state: string
-}
-
 export interface AuthUser {
   id: string
   email?: string
@@ -52,19 +44,8 @@ export interface AuthUser {
   provider?: string
   lastSignInAt?: string
 }
-export interface AuthTokens {
-  access_token?: string
-  refresh_token?: string
-  id_token?: string
-  token_type?: string
-  expires_in?: number
-  expires_at?: number
-}
-
 export interface AuthStore {
   user: AuthUser | null
-  tokens: AuthTokens | null
-  state: AuthState
 }
 
 export interface AdvancedSettings {
@@ -83,26 +64,14 @@ interface AppStore {
   openMic: boolean
   selectedAudioInput: string | null
   interactionSounds: boolean
-  userProfile: any | null
-  idToken: string | null
-  accessToken: string | null
   appliedMigrations: string[]
 }
 
-export const createNewAuthState = (): AuthState => {
-  const codeVerifier = crypto.randomBytes(32).toString('base64url')
-  const codeChallenge = crypto
-    .createHash('sha256')
-    .update(codeVerifier)
-    .digest('base64url')
-  const state = crypto.randomBytes(16).toString('hex')
-  const id = crypto.randomUUID()
-  return { id, codeVerifier, codeChallenge, state }
-}
+// Single-user local build: everything is scoped to one fixed user id.
+export const SELF_HOSTED_USER_ID = 'self-hosted'
 
-export const getCurrentUserId = (): string | undefined => {
-  const user = store.get(STORE_KEYS.USER_PROFILE) as any
-  return user?.id
+export const getCurrentUserId = (): string => {
+  return SELF_HOSTED_USER_ID
 }
 export const getAdvancedSettings = (): AdvancedSettings => {
   const storeSettings = store.get(
@@ -144,7 +113,9 @@ export const defaultValues: AppStore = {
     email: '',
   },
   main: { navExpanded: true },
-  auth: { user: null, tokens: null, state: createNewAuthState() },
+  auth: {
+    user: { id: SELF_HOSTED_USER_ID, provider: SELF_HOSTED_USER_ID },
+  },
   advancedSettings: {
     grammarServiceEnabled: false,
     macosAccessibilityContextEnabled: false,
@@ -163,14 +134,11 @@ export const defaultValues: AppStore = {
   openMic: false,
   selectedAudioInput: null,
   interactionSounds: false,
-  userProfile: null,
-  idToken: null,
-  accessToken: null,
   appliedMigrations: [],
 }
 
 // Lightweight store-like interface used for migrations and defaults logic
-type StoreLike<T = any> = {
+type StoreLike<_T = any> = {
   get: (path: string) => any
   set: (path: string, value: any) => void
 }
@@ -185,9 +153,6 @@ const cache: Record<string, any> = {
   [STORE_KEYS.OPEN_MIC]: defaultValues.openMic,
   [STORE_KEYS.SELECTED_AUDIO_INPUT]: defaultValues.selectedAudioInput,
   [STORE_KEYS.INTERACTION_SOUNDS]: defaultValues.interactionSounds,
-  [STORE_KEYS.USER_PROFILE]: defaultValues.userProfile,
-  [STORE_KEYS.ID_TOKEN]: defaultValues.idToken,
-  [STORE_KEYS.ACCESS_TOKEN]: defaultValues.accessToken,
   appliedMigrations: defaultValues.appliedMigrations,
 }
 
@@ -343,9 +308,6 @@ export async function initializeStore() {
     STORE_KEYS.OPEN_MIC,
     STORE_KEYS.SELECTED_AUDIO_INPUT,
     STORE_KEYS.INTERACTION_SOUNDS,
-    STORE_KEYS.USER_PROFILE,
-    STORE_KEYS.ID_TOKEN,
-    STORE_KEYS.ACCESS_TOKEN,
     'appliedMigrations',
   ]
 
@@ -380,9 +342,6 @@ export async function initializeStore() {
           STORE_KEYS.OPEN_MIC,
           STORE_KEYS.SELECTED_AUDIO_INPUT,
           STORE_KEYS.INTERACTION_SOUNDS,
-          STORE_KEYS.USER_PROFILE,
-          STORE_KEYS.ID_TOKEN,
-          STORE_KEYS.ACCESS_TOKEN,
           'appliedMigrations',
         ]
         for (const key of migrateKeys) {

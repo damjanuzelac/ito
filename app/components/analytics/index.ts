@@ -1,128 +1,13 @@
-import posthog from 'posthog-js'
-import log from 'electron-log'
-import { STORE_KEYS } from '../../../lib/constants/store-keys'
-import { v4 as uuidv4 } from 'uuid'
 import type { OnboardingCategory } from '../../store/useOnboardingStore'
 
-// Get or generate a machine-based device ID that's shared across all windows
-const getSharedDeviceId = async (): Promise<string> => {
-  try {
-    // Just request the device ID - main process handles generation/caching
-    const deviceId = await window.api?.invoke('analytics:get-device-id')
-    if (deviceId) {
-      console.log('[Analytics] Using machine-based device ID:', deviceId)
-      return deviceId
-    }
-    throw new Error('No device ID returned from main process')
-  } catch (error) {
-    log.error('[Analytics] Could not get machine device ID:', error)
-    // In true emergency, generate a temporary UUID as fallback
-    return uuidv4()
-  }
-}
+/**
+ * Local no-op analytics.
+ *
+ * The original implementation shipped events to PostHog. Analytics have been
+ * removed for the local, single-user build; this stub keeps the same export
+ * surface so call sites stay unchanged while nothing is collected or sent.
+ */
 
-// Check if analytics should be enabled
-const getAnalyticsEnabled = (): boolean => {
-  if (!import.meta.env.VITE_POSTHOG_API_KEY) {
-    console.warn('[Analytics] No PostHog API key found, analytics disabled')
-    return false
-  }
-  try {
-    const settings = window.electron?.store?.get(STORE_KEYS.SETTINGS)
-    return settings?.shareAnalytics ?? true
-  } catch (error) {
-    console.warn(
-      '[Analytics] Could not read settings, defaulting to enabled:',
-      error,
-    )
-    return true
-  }
-}
-
-const initPostHog = () => {
-  const isPill =
-    typeof window !== 'undefined' &&
-    typeof window.location !== 'undefined' &&
-    typeof window.location.hash === 'string' &&
-    window.location.hash.startsWith('#/pill')
-
-  posthog.init(import.meta.env.VITE_POSTHOG_API_KEY, {
-    api_host: import.meta.env.VITE_POSTHOG_HOST,
-    disable_session_recording: true,
-    disable_surveys: true,
-    advanced_disable_decide: true,
-    persistence: 'cookie',
-    // Disable default web auto-capture and pageviews for the pill window only
-    autocapture: !isPill,
-    capture_pageview: !isPill,
-    sanitize_properties: (props: Record<string, unknown>) => {
-      const p = { ...props }
-      delete (p as any).$current_url
-      delete (p as any).$pathname
-      delete (p as any).$host
-      delete (p as any).$referrer
-      return p
-    },
-  })
-}
-
-// Initialize PostHog only if analytics is enabled
-let isAnalyticsInitialized = false
-let sharedDeviceId: string | null = null
-const analyticsEnabled = getAnalyticsEnabled()
-
-console.log('[Analytics] Analytics enabled:', analyticsEnabled)
-
-// Initialize PostHog asynchronously
-const initializeAnalytics = async () => {
-  if (!analyticsEnabled) {
-    console.log('[Analytics] PostHog disabled by user settings')
-    return
-  }
-
-  try {
-    sharedDeviceId = await getSharedDeviceId()
-    console.log('[Analytics] Using shared device ID:', sharedDeviceId)
-
-    initPostHog()
-
-    if (sharedDeviceId) {
-      posthog.register({ device_id: sharedDeviceId })
-    }
-    // Attempt to resolve and alias install token to website distinct id
-    try {
-      const result = await window.api?.invoke('analytics:resolve-install-token')
-      if (result && result.success && result.websiteDistinctId) {
-        try {
-          posthog.alias(result.websiteDistinctId)
-          console.log(
-            '[Analytics] Aliased to website distinct_id from install token',
-          )
-        } catch (aliasErr) {
-          log.warn('[Analytics] alias() failed:', aliasErr)
-        }
-      }
-    } catch (err) {
-      log.warn('[Analytics] resolve-install-token failed:', err)
-    }
-    isAnalyticsInitialized = true
-
-    // Update the service instance after successful initialization
-    analytics.updateInitializationStatus(true, sharedDeviceId)
-
-    console.log(
-      '[Analytics] PostHog initialized with shared device ID:',
-      sharedDeviceId,
-    )
-  } catch (error) {
-    log.error('[Analytics] Failed to initialize analytics:', error)
-  }
-}
-
-// Initialize analytics when the module loads
-initializeAnalytics()
-
-// Event types for type safety
 export interface BaseEventProperties {
   timestamp?: string
   session_id?: string
@@ -206,314 +91,69 @@ export const ANALYTICS_EVENTS = {
 export type AnalyticsEvent =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS]
 
-/**
- * Professional Analytics Service for Ito
- * Handles all analytics tracking with proper typing and error handling
- */
 class AnalyticsService {
-  private isInitialized: boolean = isAnalyticsInitialized
-  private currentUserId: string | null = null
-  private currentProvider: string | null = null
-  private sessionStartTime: number = Date.now()
-  private deviceId: string | null = null
+  enableAnalytics(): void {}
 
-  constructor() {
-    // Device ID will be set after async initialization
-    this.deviceId = sharedDeviceId
-    console.log(
-      `[Analytics] Service initialized (enabled: ${this.isInitialized}, deviceId: ${this.deviceId || 'pending'})`,
-    )
-  }
+  disableAnalytics(): void {}
 
-  /**
-   * Enable analytics (re-initialize if needed)
-   */
-  async enableAnalytics() {
-    if (!this.isInitialized && import.meta.env.VITE_POSTHOG_API_KEY) {
-      try {
-        const deviceId = await getSharedDeviceId()
-        this.deviceId = deviceId
-        initPostHog()
-        if (deviceId) {
-          posthog.register({ device_id: deviceId })
-        }
-        this.isInitialized = true
-        console.log(
-          '[Analytics] Analytics enabled and initialized with shared device ID:',
-          deviceId,
-        )
-      } catch (error) {
-        log.error('[Analytics] Failed to enable analytics:', error)
-      }
-    }
-  }
-
-  /**
-   * Disable analytics
-   */
-  disableAnalytics() {
-    this.isInitialized = false
-    this.currentUserId = null
-    this.currentProvider = null
-    try {
-      posthog.opt_out_capturing()
-    } catch (error) {
-      log.warn('[Analytics] Failed to opt-out capturing:', error)
-    }
-    console.log('[Analytics] Analytics disabled')
-  }
-
-  /**
-   * Check if analytics is currently enabled
-   */
   isEnabled(): boolean {
-    return this.isInitialized
+    return false
   }
 
-  /**
-   * Set user identification and properties
-   */
   identifyUser(
-    userId: string,
-    properties: Partial<UserProperties> = {},
-    provider?: string,
-  ) {
-    console.log('identifyUser', userId, properties, provider)
+    _userId: string,
+    _properties: Partial<UserProperties> = {},
+    _provider?: string,
+  ): void {}
 
-    // Store provider information
-    if (provider) {
-      this.currentProvider = provider
-    }
+  updateUserProperties(_properties: Partial<UserProperties>): void {}
 
-    if (!this.shouldTrack()) {
-      console.log(
-        '[Analytics] User identification skipped - analytics disabled or self-hosted user',
-      )
-      return
-    }
+  track(_eventName: AnalyticsEvent, _properties: BaseEventProperties = {}) {}
 
-    try {
-      if (this.currentUserId !== userId) {
-        this.currentUserId = userId
-        const props = {
-          user_id: userId,
-          last_active: new Date().toISOString(),
-          ...properties,
-        }
-        posthog.identify(userId, props)
-        console.log(
-          `[Analytics] User identified: ${userId} (deviceId: ${this.deviceId || 'pending'})`,
-        )
-      } else if (Object.keys(properties).length > 0) {
-        posthog.identify(undefined, {
-          ...properties,
-          last_active: new Date().toISOString(),
-        })
-      }
-    } catch (error) {
-      log.error('[Analytics] Failed to identify user:', error)
-    }
-  }
-
-  /**
-   * Update user properties
-   */
-  updateUserProperties(properties: Partial<UserProperties>) {
-    if (!this.shouldTrack() || !this.currentUserId) {
-      console.log(
-        '[Analytics] User properties update skipped - analytics disabled, self-hosted user, or user not identified',
-      )
-      return
-    }
-
-    try {
-      posthog.identify(undefined, properties)
-      console.log('[Analytics] User properties updated')
-    } catch (error) {
-      log.error('[Analytics] Failed to update user properties:', error)
-    }
-  }
-
-  /**
-   * Track a generic event
-   */
-  track(eventName: AnalyticsEvent, properties: BaseEventProperties = {}) {
-    if (!this.shouldTrack()) {
-      return
-    }
-
-    try {
-      const eventProperties = {
-        timestamp: new Date().toISOString(),
-        session_duration_ms: Date.now() - this.sessionStartTime,
-        ...properties,
-      }
-
-      posthog.capture(eventName, {
-        ...eventProperties,
-        ...(this.currentUserId ? { user_id: this.currentUserId } : {}),
-      })
-      console.log(
-        `[Analytics] Event tracked: ${eventName} (deviceId: ${this.deviceId || 'pending'}, userId: ${this.currentUserId || 'anonymous'})`,
-      )
-    } catch (error) {
-      log.error(`[Analytics] Failed to track event ${eventName}:`, error)
-    }
-  }
-
-  /**
-   * Track onboarding events
-   */
   trackOnboarding(
-    eventName: Extract<
-      AnalyticsEvent,
-      | 'onboarding_started'
-      | 'onboarding_step_completed'
-      | 'onboarding_step_viewed'
-      | 'onboarding_completed'
-      | 'onboarding_abandoned'
-    >,
-    properties: OnboardingEventProperties,
-  ) {
-    console.log('trackOnboarding', eventName, properties)
-    this.track(eventName, properties)
-  }
+    _eventName: AnalyticsEvent,
+    _properties: OnboardingEventProperties,
+  ): void {}
 
-  /**
-   * Track authentication events
-   */
   trackAuth(
-    eventName: Extract<
-      AnalyticsEvent,
-      | 'auth_signup_started'
-      | 'auth_signup_completed'
-      | 'auth_signin_started'
-      | 'auth_signin_completed'
-      | 'auth_logout'
-    >,
-    properties: AuthEventProperties,
-  ) {
-    this.track(eventName, properties)
-  }
+    _eventName: AnalyticsEvent,
+    _properties: AuthEventProperties,
+  ): void {}
 
-  /**
-   * Track settings changes
-   */
   trackSettings(
-    eventName: Extract<
-      AnalyticsEvent,
-      | 'setting_changed'
-      | 'microphone_changed'
-      | 'keyboard_shortcut_changed'
-      | 'privacy_mode_toggled'
-      | 'keyboard_shortcuts_changed'
-    >,
-    properties: SettingsEventProperties,
-  ) {
-    this.track(eventName, properties)
-  }
+    _eventName: AnalyticsEvent,
+    _properties: SettingsEventProperties,
+  ): void {}
 
-  /**
-   * Track permission events
-   */
   trackPermission(
-    eventName: Extract<
-      AnalyticsEvent,
-      'permission_requested' | 'permission_granted' | 'permission_denied'
-    >,
-    permissionType: 'microphone' | 'accessibility',
-    properties: BaseEventProperties = {},
-  ) {
-    this.track(eventName, {
-      permission_type: permissionType,
-      ...properties,
-    })
-  }
+    _eventName: AnalyticsEvent,
+    _properties: BaseEventProperties = {},
+  ): void {}
 
-  /**
-   * Reset analytics (for logout)
-   */
-  resetUser() {
-    if (!this.isInitialized) {
-      console.log('[Analytics] User reset skipped - analytics disabled')
-      return
-    }
+  resetUser(): void {}
 
-    try {
-      posthog.reset()
-      this.currentUserId = null
-      this.currentProvider = null
-      console.log('[Analytics] User session reset')
-    } catch (error) {
-      log.error('[Analytics] Failed to reset user session:', error)
-    }
-  }
-
-  /**
-   * Get current session duration
-   */
   getSessionDuration(): number {
-    return Date.now() - this.sessionStartTime
+    return 0
   }
 
-  /**
-   * Check if user is identified
-   */
   isUserIdentified(): boolean {
-    return this.currentUserId !== null
+    return false
   }
 
-  /**
-   * Get the current device ID
-   */
   getDeviceId(): string | null {
-    return this.deviceId
+    return null
   }
 
-  /**
-   * Update initialization status (called after async initialization completes)
-   */
-  updateInitializationStatus(isInitialized: boolean, deviceId: string | null) {
-    this.isInitialized = isInitialized
-    this.deviceId = deviceId
-    console.log(
-      `[Analytics] Service status updated (enabled: ${this.isInitialized}, deviceId: ${this.deviceId})`,
-    )
-  }
-
-  /**
-   * Check if analytics should be tracked based on provider
-   */
-  private shouldTrack(): boolean {
-    if (!this.isInitialized) {
-      return false
-    }
-
-    // Skip tracking for self-hosted users
-    if (this.currentProvider === 'self-hosted') {
-      console.log('[Analytics] Tracking skipped - self-hosted user')
-      return false
-    }
-
-    return true
-  }
+  updateInitializationStatus(
+    _isInitialized: boolean,
+    _deviceId: string | null,
+  ): void {}
 }
 
-// Export singleton instance
 export const analytics = new AnalyticsService()
 
-// Function to update analytics based on settings change
-export const updateAnalyticsFromSettings = (shareAnalytics: boolean) => {
-  if (shareAnalytics && !analytics.isEnabled()) {
-    analytics.enableAnalytics()
-    console.log('[Analytics] Analytics enabled by settings change')
-  } else if (!shareAnalytics && analytics.isEnabled()) {
-    analytics.disableAnalytics()
-    console.log('[Analytics] Analytics disabled by settings change')
-  }
-}
+export const updateAnalyticsFromSettings = (_shareAnalytics: boolean) => {}
 
-// Export convenience functions
 export const trackEvent = analytics.track.bind(analytics)
 export const identifyUser = analytics.identifyUser.bind(analytics)
 export const updateUserProperties =

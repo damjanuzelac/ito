@@ -105,11 +105,7 @@ module.exports = {
       { from: 'resources/build/ito-logo.png', to: 'build/ito-logo.png' },
     ],
     forceCodeSigning: false,
-    asarUnpack: [
-      'resources/**',
-      '**/node_modules/@sentry/**',
-      '**/node_modules/sqlite3/**',
-    ],
+    asarUnpack: ['resources/**', '**/node_modules/sqlite3/**'],
   },
   nodeGypRebuild: false,
   buildDependenciesFromSource: false,

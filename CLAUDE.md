@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is the ITO project - an AI assistant application with both client and server components.
+This is the ITO project - a single-user, local-first voice dictation app with both client and server components. Transcription runs against a local Whisper server (speaches) by default; Groq cloud is an optional provider via GROQ_API_KEY. There is no auth, billing, telemetry or cloud sync.
 
 ## Project Structure
 
@@ -13,12 +13,12 @@ This is the ITO project - an AI assistant application with both client and serve
 
 ## Branch
 
-Main development branch: `dev`
+Main development branch: `main`
 
 ## Development Commands
 
 - Dev: `bun dev` (starts electron-vite dev with watch)
-- Server: `docker compose up --build` (run from server directory)
+- Server: `docker compose up --build` (run from server directory; starts the gRPC server + local Whisper)
 - Build: `bun build:app:mac` or `bun build:app:windows`
 - Test: `bun runAllTests` (runs lib, server, and native tests)
   - Lib tests: `bun runLibTests`

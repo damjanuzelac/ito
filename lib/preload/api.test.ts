@@ -96,15 +96,5 @@ describe('Preload API Critical Behavior Tests', () => {
         pronunciation: null,
       })
     })
-
-    test('should transform notifyLoginSuccess parameters correctly', async () => {
-      const profile = { id: 'user123', email: 'test@example.com' }
-      await api.notifyLoginSuccess(profile, 'id-token', 'access-token')
-
-      expect(mockIpcRenderer.invoke).toHaveBeenCalledWith(
-        'notify-login-success',
-        { profile, idToken: 'id-token', accessToken: 'access-token' },
-      )
-    })
   })
 })

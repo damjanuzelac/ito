@@ -3,16 +3,12 @@ import { audioRecorderService } from '../media/audio'
 import { stopKeyListener } from '../media/keyboard'
 import { selectedTextReaderService } from '../media/selected-text-reader'
 import { allowAppNap } from './appNap'
-import { syncService } from './syncService'
 import { destroyAppTray } from './tray'
-import { timingCollector } from './timing/TimingCollector'
 
 export const teardown = () => {
   stopKeyListener()
   audioRecorderService.terminate()
   selectedTextReaderService.terminate()
-  timingCollector.shutdown()
-  syncService.stop()
   destroyAppTray()
   allowAppNap()
 }

@@ -4,9 +4,6 @@ import { STORE_KEYS } from './store-keys'
 describe('STORE_KEYS', () => {
   test('should contain all expected keys', () => {
     expect(STORE_KEYS.AUTH).toBe('auth')
-    expect(STORE_KEYS.USER_PROFILE).toBe('userProfile')
-    expect(STORE_KEYS.ID_TOKEN).toBe('idToken')
-    expect(STORE_KEYS.ACCESS_TOKEN).toBe('accessToken')
     expect(STORE_KEYS.MAIN).toBe('main')
     expect(STORE_KEYS.ONBOARDING).toBe('onboarding')
     expect(STORE_KEYS.SETTINGS).toBe('settings')

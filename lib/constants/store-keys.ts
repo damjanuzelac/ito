@@ -2,9 +2,6 @@
 // This file can be imported by both main and renderer processes
 export const STORE_KEYS = {
   AUTH: 'auth',
-  USER_PROFILE: 'userProfile',
-  ID_TOKEN: 'idToken',
-  ACCESS_TOKEN: 'accessToken',
   MAIN: 'main',
   ONBOARDING: 'onboarding',
   SETTINGS: 'settings',

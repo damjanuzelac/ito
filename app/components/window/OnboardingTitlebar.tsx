@@ -16,25 +16,23 @@ export const OnboardingTitlebar = () => {
     <>
       {/* Onboarding Steps Text */}
       <div className="onboarding-steps-text">
-        {['Sign Up', 'Permissions', 'Set Up', 'Try it'].map(
-          (step, idx, arr) => (
-            <React.Fragment key={step}>
+        {['Permissions', 'Set Up', 'Try it'].map((step, idx, arr) => (
+          <React.Fragment key={step}>
+            <span
+              className={`onboarding-step-label${idx <= onboardingCategoryIndex ? ' active' : ''}`}
+            >
+              {step.toUpperCase()}
+            </span>
+            {idx < arr.length - 1 && (
               <span
-                className={`onboarding-step-label${idx <= onboardingCategoryIndex ? ' active' : ''}`}
+                className={`onboarding-step-chevron${idx < onboardingCategoryIndex ? ' active' : ''}`}
+                aria-hidden="true"
               >
-                {step.toUpperCase()}
+                &#8250;
               </span>
-              {idx < arr.length - 1 && (
-                <span
-                  className={`onboarding-step-chevron${idx < onboardingCategoryIndex ? ' active' : ''}`}
-                  aria-hidden="true"
-                >
-                  &#8250;
-                </span>
-              )}
-            </React.Fragment>
-          ),
-        )}
+            )}
+          </React.Fragment>
+        ))}
       </div>
       {/* Onboarding Progress Bar */}
       <div className="onboarding-progress-bar-bg">

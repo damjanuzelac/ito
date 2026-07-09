@@ -1,7 +1,7 @@
 import { LlmProvider } from './llmProvider.js'
 import { ClientProvider } from './providers.js'
 import { groqClient } from './groqClient.js'
-import { cerebrasClient } from './cerebrasClient.js'
+import { localWhisperClient } from './localWhisperClient.js'
 import { ClientUnavailableError } from './errors.js'
 
 /**
@@ -11,6 +11,9 @@ import { ClientUnavailableError } from './errors.js'
  */
 export function getAsrProvider(providerName: string): LlmProvider {
   switch (providerName) {
+    case ClientProvider.LOCAL:
+      return localWhisperClient
+
     case ClientProvider.GROQ:
       if (!groqClient.isAvailable) {
         throw new ClientUnavailableError(ClientProvider.GROQ)
@@ -23,7 +26,7 @@ export function getAsrProvider(providerName: string): LlmProvider {
 }
 
 /**
- * Get an LLM provider by name
+ * Get an LLM provider by name (used for EDIT mode transcript adjustment)
  * @param providerName The name of the LLM provider
  * @returns The LLM provider instance
  */
@@ -35,12 +38,6 @@ export function getLlmProvider(providerName: string): LlmProvider {
       }
       return groqClient
 
-    case ClientProvider.CEREBRAS:
-      if (!cerebrasClient || !cerebrasClient.isAvailable) {
-        throw new ClientUnavailableError(ClientProvider.CEREBRAS)
-      }
-      return cerebrasClient
-
     default:
       throw new ClientUnavailableError(providerName as ClientProvider)
   }
@@ -51,7 +48,7 @@ export function getLlmProvider(providerName: string): LlmProvider {
  * @returns Array of available ASR provider names
  */
 export function getAvailableAsrProviders(): ClientProvider[] {
-  const providers: ClientProvider[] = []
+  const providers: ClientProvider[] = [ClientProvider.LOCAL]
 
   if (groqClient.isAvailable) {
     providers.push(ClientProvider.GROQ)
@@ -69,10 +66,6 @@ export function getAvailableLlmProviders(): ClientProvider[] {
 
   if (groqClient.isAvailable) {
     providers.push(ClientProvider.GROQ)
-  }
-
-  if (cerebrasClient && cerebrasClient.isAvailable) {
-    providers.push(ClientProvider.CEREBRAS)
   }
 
   return providers
