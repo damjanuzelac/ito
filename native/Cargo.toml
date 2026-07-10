@@ -5,6 +5,7 @@ members = [
     "text-writer",
     "active-application",
     "selected-text-reader",
+    "ito-tray",
 ]
 
 resolver = "2"

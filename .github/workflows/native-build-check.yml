@@ -69,6 +69,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # ito-tray is excluded: whisper.cpp (cmake) and the tray UI are not
+      # reliable under MinGW cross-compilation. It builds with MSVC on Windows.
       - name: Verify native binaries compile (Windows)
         working-directory: native
-        run: cargo build --workspace --release --target x86_64-pc-windows-gnu
+        run: cargo build --workspace --exclude ito-tray --release --target x86_64-pc-windows-gnu
