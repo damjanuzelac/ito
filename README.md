@@ -4,6 +4,10 @@
 > accounts, no billing, no telemetry and no cloud sync. Transcription runs against a **local
 > Whisper server** by default (Groq cloud remains an optional provider via `GROQ_API_KEY`).
 > See [Quick Start](#-quick-start) below.
+>
+> There is also **Ito Tray** — a standalone Rust `.exe` for Windows with the whole pipeline
+> (hotkey → mic → embedded whisper.cpp → typing) in a single process, no Electron/Docker/server
+> needed. See [native/ito-tray/README.md](native/ito-tray/README.md).
 
 # Ito
 

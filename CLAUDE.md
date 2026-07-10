@@ -60,11 +60,12 @@ cargo test
 
 ### Native Modules
 
-- `global-key-listener` - Keyboard event capture and hotkey management
-- `audio-recorder` - Audio recording with sample rate conversion
-- `text-writer` - Cross-platform text input simulation
+- `global-key-listener` - Keyboard event capture and hotkey management (lib + bin)
+- `audio-recorder` - Audio recording with sample rate conversion (lib + bin)
+- `text-writer` - Cross-platform text input simulation (lib + bin)
 - `active-application` - Active window detection
-- `selected-text-reader` - Selected text extraction
+- `selected-text-reader` - Selected text extraction (macOS/Windows only; does not compile on Linux)
+- `ito-tray` - Standalone Windows tray app: the whole dictation pipeline in one .exe with embedded whisper.cpp (see native/ito-tray/README.md). Excluded from the MinGW cross-compile CI check; build with MSVC on Windows.
 
 ### Linting and Formatting
 

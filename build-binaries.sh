@@ -84,11 +84,14 @@ build_native_workspace() {
         # Use MSVC on Windows (better AV compatibility), GNU for cross-compilation
         if [ "$compiling_on_windows" = true ]; then
             print_info "Building with MSVC toolchain on Windows..."
-            cargo build --release --target x86_64-pc-windows-msvc
+            # Includes ito-tray (standalone tray app); requires CMake + LLVM/clang
+            # for the whisper.cpp build (whisper-rs).
+            cargo build --release --workspace --target x86_64-pc-windows-msvc
         else
-            # Cross-compile from macOS/Linux using GNU toolchain
-            print_info "Cross-compiling with GNU toolchain..."
-            cargo build --release --target x86_64-pc-windows-gnu
+            # Cross-compile from macOS/Linux using GNU toolchain.
+            # ito-tray is excluded: whisper.cpp + tray UI are unreliable under
+            # MinGW cross-compilation; build it natively on Windows instead.
+            cargo build --release --workspace --exclude ito-tray --target x86_64-pc-windows-gnu
         fi
     fi
 

@@ -1,0 +1,32 @@
+[package]
+name = "ito-tray"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+chrono = "0.4"
+crossbeam-channel = "0.5"
+dirs = "5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "0.8"
+ureq = { version = "2", features = ["json"] }
+uuid = { version = "1", features = ["v4"] }
+whisper-rs = "0.16"
+
+active-win-pos-rs = "0.9"
+audio-recorder = { path = "../audio-recorder" }
+global-key-listener = { path = "../global-key-listener" }
+text-writer = { path = "../text-writer" }
+
+[target.'cfg(windows)'.dependencies]
+tao = "0.30"
+tray-icon = "0.19"
+
+[build-dependencies]
+tauri-winres = "0.3.5"
+
+[lints]
+workspace = true
