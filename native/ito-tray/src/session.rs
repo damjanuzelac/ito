@@ -103,6 +103,7 @@ pub fn process_audio(
     let outcome = engine.transcribe(
         &enhanced,
         &config.language,
+        &config.auto_languages,
         &prompt,
         config.no_speech_threshold,
     )?;

@@ -17,6 +17,11 @@ focused application. Transcription runs in-process via
 - **History** — transcripts are stored in a local SQLite database
 - **Auto-downloaded model** — the ggml Whisper model is fetched from Hugging
   Face on first run
+- **Status tray icon** — blue when idle, red while recording, amber while the
+  model loads or transcribes
+- **Constrained language detection** — with `language = "auto"`, detection is
+  restricted to `auto_languages` (default `["en", "hr"]`) so short clips aren't
+  mis-detected as an unrelated language
 
 ## Building (Windows)
 
@@ -46,6 +51,7 @@ hotkey_edit = ["Alt", "ControlLeft"]             # Ctrl+Alt
 microphone = "default"           # or an exact input device name
 model = "small"                  # tiny | base | small | medium | large-v3
 language = "auto"                # or e.g. "en", "hr"
+auto_languages = ["en", "hr"]    # candidates when language = "auto"
 dictionary = []                  # e.g. ["Zagreb", "Postgres", "Uzelac"]
 no_speech_threshold = 0.6
 groq_api_key = ""                # optional; enables edit mode

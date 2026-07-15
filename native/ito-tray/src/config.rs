@@ -28,6 +28,12 @@ fn default_language() -> String {
     "auto".to_string()
 }
 
+/// When `language = "auto"`, detection is restricted to these languages so a
+/// short clip is never mis-detected as some unrelated third language.
+fn default_auto_languages() -> Vec<String> {
+    vec!["en".to_string(), "hr".to_string()]
+}
+
 fn default_no_speech_threshold() -> f32 {
     0.6
 }
@@ -49,6 +55,8 @@ pub struct Config {
     pub model: String,
     /// Spoken language ("auto" for detection, or e.g. "en", "hr").
     pub language: String,
+    /// Candidate languages for auto-detection (used only when language = "auto").
+    pub auto_languages: Vec<String>,
     /// Custom vocabulary fed to the transcription prompt.
     pub dictionary: Vec<String>,
     /// Segments with no_speech_prob above this are treated as silence.
@@ -67,6 +75,7 @@ impl Default for Config {
             microphone: default_microphone(),
             model: default_model(),
             language: default_language(),
+            auto_languages: default_auto_languages(),
             dictionary: Vec::new(),
             no_speech_threshold: default_no_speech_threshold(),
             groq_api_key: String::new(),

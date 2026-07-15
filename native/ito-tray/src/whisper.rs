@@ -27,12 +27,14 @@ impl WhisperEngine {
         Ok(Self { ctx })
     }
 
-    /// Transcribes 16 kHz mono i16 PCM. `language` of "auto" enables
-    /// detection. `initial_prompt` carries the vocabulary hint.
+    /// Transcribes 16 kHz mono i16 PCM. `language` of "auto" restricts
+    /// detection to `auto_languages` (falling back to full auto-detection when
+    /// that list is empty). `initial_prompt` carries the vocabulary hint.
     pub fn transcribe(
         &self,
         pcm: &[i16],
         language: &str,
+        auto_languages: &[String],
         initial_prompt: &str,
         no_speech_threshold: f32,
     ) -> Result<TranscribeOutcome> {
@@ -40,8 +42,24 @@ impl WhisperEngine {
         whisper_rs::convert_integer_to_float_audio(pcm, &mut audio)
             .context("PCM conversion failed")?;
 
+        // whisper.cpp defaults to 4 threads; use the physical cores available
+        // (capped) so short clips transcribe in a couple of seconds rather than
+        // grinding a single-digit thread count.
+        let threads = std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(4)
+            .min(8);
+
+        let resolved_language = if language == "auto" {
+            self.detect_language(&audio, auto_languages, threads)
+                .unwrap_or_else(|| "auto".to_string())
+        } else {
+            language.to_string()
+        };
+
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        params.set_language(Some(language));
+        params.set_n_threads(threads as std::os::raw::c_int);
+        params.set_language(Some(&resolved_language));
         if !initial_prompt.is_empty() {
             params.set_initial_prompt(initial_prompt);
         }
@@ -75,5 +93,38 @@ impl WhisperEngine {
         }
 
         Ok(TranscribeOutcome::Text(text.trim().to_string()))
+    }
+
+    /// Restricted language detection: runs whisper's language auto-detect but
+    /// only considers `candidates`, returning the one with the highest
+    /// probability. Returns `None` (→ fall back to full auto-detect) when the
+    /// list is empty or detection fails.
+    fn detect_language(
+        &self,
+        audio: &[f32],
+        candidates: &[String],
+        threads: usize,
+    ) -> Option<String> {
+        match candidates {
+            [] => return None,
+            [only] => return Some(only.clone()),
+            _ => {}
+        }
+
+        let mut state = self.ctx.create_state().ok()?;
+        state.pcm_to_mel(audio, threads).ok()?;
+        let (_, probs) = state.lang_detect(0, threads).ok()?;
+
+        candidates
+            .iter()
+            .filter_map(|lang| {
+                let id = whisper_rs::get_lang_id(lang)? as usize;
+                probs.get(id).map(|&p| (lang.clone(), p))
+            })
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(lang, prob)| {
+                eprintln!("[ito-tray] Detected language: {lang} (p = {prob:.3})");
+                lang
+            })
     }
 }
