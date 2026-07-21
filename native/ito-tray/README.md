@@ -41,6 +41,16 @@ cargo build --release -p ito-tray --target x86_64-pc-windows-msvc
 Note: MinGW (`x86_64-pc-windows-gnu`) cross-compilation is not supported for
 this crate; CI compile checks exclude it.
 
+### GPU acceleration (CUDA)
+
+With an NVIDIA GPU, local transcription can run on the GPU (an order of
+magnitude faster than CPU). Install the CUDA Toolkit (matching your driver's
+supported CUDA version) and build with the `cuda` feature:
+
+```powershell
+cargo build --release -p ito-tray --target x86_64-pc-windows-msvc --features cuda
+```
+
 ## Configuration
 
 Created on first run at `%APPDATA%\Ito-tray\config.toml`:
@@ -49,14 +59,22 @@ Created on first run at `%APPDATA%\Ito-tray\config.toml`:
 hotkey_transcribe = ["ControlLeft", "MetaLeft"]  # Ctrl+Win
 hotkey_edit = ["Alt", "ControlLeft"]             # Ctrl+Alt
 microphone = "default"           # or an exact input device name
+provider = "local"               # local (embedded whisper) | groq (cloud API)
 model = "small"                  # tiny | base | small | medium | large-v3
 language = "auto"                # or e.g. "en", "hr"
 auto_languages = ["en", "hr"]    # candidates when language = "auto"
 dictionary = []                  # e.g. ["Zagreb", "Postgres", "Uzelac"]
 no_speech_threshold = 0.6
-groq_api_key = ""                # optional; enables edit mode
+groq_api_key = ""                # optional; enables edit mode + groq provider
 groq_model = "openai/gpt-oss-120b"
+groq_transcription_model = "whisper-large-v3-turbo"
 ```
+
+With `provider = "groq"` (and a `groq_api_key`), clips are sent to Groq's
+transcription API instead of the local model — much faster than CPU inference,
+at the cost of audio leaving the machine. The local model is not downloaded or
+loaded in this mode. Changing `provider` requires an app restart. If a Groq
+request fails while the local model is loaded, transcription falls back to it.
 
 Key names are raw [rdev](https://github.com/heyito/rdev) names, e.g.
 `ControlLeft`, `MetaLeft` (Win key), `Alt`, `ShiftLeft`, `KeyA`, `Function`.

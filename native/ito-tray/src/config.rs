@@ -20,6 +20,19 @@ fn default_microphone() -> String {
     "default".to_string()
 }
 
+fn default_provider() -> String {
+    "local".to_string()
+}
+
+fn default_groq_transcription_model() -> String {
+    "whisper-large-v3-turbo".to_string()
+}
+
+/// Small local model used only to pick the language for the Groq provider.
+fn default_language_detect_model() -> String {
+    "tiny".to_string()
+}
+
 fn default_model() -> String {
     "small".to_string()
 }
@@ -51,20 +64,29 @@ pub struct Config {
     pub hotkey_edit: Vec<String>,
     /// Input device name, or "default".
     pub microphone: String,
+    /// Transcription provider: "local" (embedded whisper.cpp) or "groq"
+    /// (cloud API; needs groq_api_key). Changing it requires a restart.
+    pub provider: String,
     /// Whisper model: tiny | base | small | medium | large-v3 (ggml name suffix).
     pub model: String,
     /// Spoken language ("auto" for detection, or e.g. "en", "hr").
     pub language: String,
     /// Candidate languages for auto-detection (used only when language = "auto").
     pub auto_languages: Vec<String>,
+    /// With provider = "groq" and language = "auto", this small local model
+    /// decides the language so the API is told explicitly instead of guessing.
+    pub language_detect_model: String,
     /// Custom vocabulary fed to the transcription prompt.
     pub dictionary: Vec<String>,
     /// Segments with no_speech_prob above this are treated as silence.
     pub no_speech_threshold: f32,
-    /// Optional Groq API key; enables edit mode ("hey ito" commands).
+    /// Optional Groq API key; enables edit mode ("hey ito" commands) and the
+    /// "groq" transcription provider.
     pub groq_api_key: String,
     /// LLM used for edit mode.
     pub groq_model: String,
+    /// Whisper model used when provider = "groq".
+    pub groq_transcription_model: String,
 }
 
 impl Default for Config {
@@ -73,13 +95,16 @@ impl Default for Config {
             hotkey_transcribe: default_hotkey_transcribe(),
             hotkey_edit: default_hotkey_edit(),
             microphone: default_microphone(),
+            provider: default_provider(),
             model: default_model(),
             language: default_language(),
             auto_languages: default_auto_languages(),
+            language_detect_model: default_language_detect_model(),
             dictionary: Vec::new(),
             no_speech_threshold: default_no_speech_threshold(),
             groq_api_key: String::new(),
             groq_model: default_groq_model(),
+            groq_transcription_model: default_groq_transcription_model(),
         }
     }
 }
@@ -132,8 +157,20 @@ impl Config {
     }
 
     /// The ggml model file name for the configured model size.
+    #[cfg(test)]
     pub fn model_file_name(&self) -> String {
         format!("ggml-{}.bin", self.model)
+    }
+
+    /// True when transcription should go through the Groq API.
+    pub fn uses_groq_transcription(&self) -> bool {
+        self.provider == "groq" && !self.groq_api_key.is_empty()
+    }
+
+    /// True when the language must be resolved locally before transcribing
+    /// (the API is then told explicitly rather than guessing).
+    pub fn needs_language_detection(&self) -> bool {
+        self.language == "auto" && self.auto_languages.len() >= 2
     }
 }
 

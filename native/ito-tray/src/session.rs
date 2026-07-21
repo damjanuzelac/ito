@@ -3,7 +3,7 @@
 //! Owns the audio capture, the Whisper engine and the history database on a
 //! single thread (cpal streams are not Send).
 
-use crate::audio_pipeline::{duration_ms, enhance_pcm16, SAMPLE_RATE};
+use crate::audio_pipeline::{create_wav_header, duration_ms, enhance_pcm16, SAMPLE_RATE};
 use crate::config::{self, Config};
 use crate::groq;
 use crate::history::History;
@@ -12,7 +12,7 @@ use crate::prompt::{
     create_transcription_prompt, detect_ito_mode, full_vocabulary, ItoMode, WindowContext,
 };
 use crate::whisper::{TranscribeOutcome, WhisperEngine};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use audio_recorder::{AudioConfigInfo, AudioSink, CaptureSession};
 use crossbeam_channel::Receiver;
 use std::sync::{Arc, Mutex, RwLock};
@@ -64,11 +64,42 @@ struct ActiveRecording {
     window_context: WindowContext,
 }
 
+/// Prepares the Whisper engine unless transcription is delegated to Groq.
+/// Returns `None` for the Groq provider so the local model is neither
+/// downloaded nor loaded into memory.
+pub fn prepare_engine_if_needed(
+    config: &Config,
+    status: &dyn Fn(String),
+) -> Result<Option<WhisperEngine>> {
+    if config.uses_groq_transcription() {
+        if !config.needs_language_detection() {
+            eprintln!("[ito-tray] Using Groq transcription provider; skipping local model");
+            return Ok(None);
+        }
+        // Load the small detector model only: it resolves the language for the
+        // API (and doubles as the fallback engine if a Groq request fails).
+        eprintln!(
+            "[ito-tray] Using Groq transcription with local \"{}\" language detection",
+            config.language_detect_model
+        );
+        return load_model(&config.language_detect_model, status).map(Some);
+    }
+    if config.provider == "groq" {
+        eprintln!("[ito-tray] provider = \"groq\" but groq_api_key is empty; using local model");
+    }
+    prepare_engine(config, status).map(Some)
+}
+
 /// Prepares the Whisper engine (downloading the model on first run) and
 /// reports progress through `status`.
 pub fn prepare_engine(config: &Config, status: &dyn Fn(String)) -> Result<WhisperEngine> {
+    load_model(&config.model, status)
+}
+
+/// Downloads (on first use) and loads one ggml model by size name.
+fn load_model(model: &str, status: &dyn Fn(String)) -> Result<WhisperEngine> {
     let models_dir = config::models_dir()?;
-    let model_file = config.model_file_name();
+    let model_file = format!("ggml-{model}.bin");
     let model_path = ensure_model(&models_dir, &model_file, &|downloaded, total| {
         if total > 0 {
             status(format!(
@@ -90,7 +121,7 @@ pub fn prepare_engine(config: &Config, status: &dyn Fn(String)) -> Result<Whispe
 /// Transcribes prepared audio and, for edit mode, runs the Groq adjustment.
 /// Returns (text to insert, raw transcript, optional LLM output).
 pub fn process_audio(
-    engine: &WhisperEngine,
+    engine: Option<&WhisperEngine>,
     config: &Config,
     samples: &[i16],
     requested_mode: ItoMode,
@@ -100,21 +131,9 @@ pub fn process_audio(
     let vocabulary = full_vocabulary(&config.dictionary);
     let prompt = create_transcription_prompt(&vocabulary);
 
-    let outcome = engine.transcribe(
-        &enhanced,
-        &config.language,
-        &config.auto_languages,
-        &prompt,
-        config.no_speech_threshold,
-    )?;
-
-    let transcript = match outcome {
-        TranscribeOutcome::NoSpeech(prob) => {
-            eprintln!("[ito-tray] No speech detected (no_speech_prob={prob:.2})");
-            return Ok(None);
-        }
-        TranscribeOutcome::Text(text) if text.is_empty() => return Ok(None),
-        TranscribeOutcome::Text(text) => text,
+    let transcript = match transcribe(engine, config, &enhanced, &prompt)? {
+        Some(text) => text,
+        None => return Ok(None),
     };
 
     // The chord decides the mode; "hey ito" in a plain dictation also
@@ -143,6 +162,72 @@ pub fn process_audio(
     Ok(Some((transcript.clone(), transcript, None)))
 }
 
+/// Routes one clip to the configured transcription provider. Groq errors fall
+/// back to the local engine when it is loaded. Returns `None` for silence.
+fn transcribe(
+    engine: Option<&WhisperEngine>,
+    config: &Config,
+    enhanced: &[i16],
+    prompt: &str,
+) -> Result<Option<String>> {
+    if config.uses_groq_transcription() {
+        // Resolve the language locally so the API is never left guessing.
+        let language = match (config.needs_language_detection(), engine) {
+            (true, Some(detector)) => detector
+                .detect_language(enhanced, &config.auto_languages)
+                .inspect(|lang| eprintln!("[ito-tray] Detected language: {lang}"))
+                .unwrap_or_else(|| config.language.clone()),
+            _ => config.language.clone(),
+        };
+
+        let mut wav = Vec::with_capacity(44 + enhanced.len() * 2);
+        wav.extend_from_slice(&create_wav_header(
+            (enhanced.len() * 2) as u32,
+            SAMPLE_RATE,
+            1,
+            16,
+        ));
+        for sample in enhanced {
+            wav.extend_from_slice(&sample.to_le_bytes());
+        }
+
+        match groq::transcribe_wav(
+            &config.groq_api_key,
+            &config.groq_transcription_model,
+            &wav,
+            &language,
+            prompt,
+        ) {
+            Ok(text) if text.is_empty() => return Ok(None),
+            Ok(text) => return Ok(Some(text)),
+            Err(e) => {
+                eprintln!("[ito-tray] {e}");
+                let Some(_) = engine else {
+                    anyhow::bail!("Groq transcription failed and no local model is loaded: {e}");
+                };
+                eprintln!("[ito-tray] Falling back to the local model");
+            }
+        }
+    }
+
+    let engine = engine.context("No transcription engine available")?;
+    let outcome = engine.transcribe(
+        enhanced,
+        &config.language,
+        &config.auto_languages,
+        prompt,
+        config.no_speech_threshold,
+    )?;
+    match outcome {
+        TranscribeOutcome::NoSpeech(prob) => {
+            eprintln!("[ito-tray] No speech detected (no_speech_prob={prob:.2})");
+            Ok(None)
+        }
+        TranscribeOutcome::Text(text) if text.is_empty() => Ok(None),
+        TranscribeOutcome::Text(text) => Ok(Some(text)),
+    }
+}
+
 /// Runs the session loop until `Quit`. `status` receives human-readable state
 /// updates (shown in the tray tooltip on Windows).
 pub fn run_session_loop(
@@ -152,7 +237,7 @@ pub fn run_session_loop(
 ) {
     let engine = {
         let cfg = config.read().unwrap().clone();
-        match prepare_engine(&cfg, &|s| status(s)) {
+        match prepare_engine_if_needed(&cfg, &|s| status(s)) {
             Ok(engine) => engine,
             Err(e) => {
                 status(format!("Model error: {e}"));
@@ -221,7 +306,7 @@ pub fn run_session_loop(
                 status("Transcribing...".to_string());
                 let cfg = config.read().unwrap().clone();
                 match process_audio(
-                    &engine,
+                    engine.as_ref(),
                     &cfg,
                     &samples,
                     recording.mode,

@@ -2,6 +2,7 @@
 
 use crate::config::{self, Config};
 use crate::hotkeys::register_config_hotkeys;
+use crate::overlay::Overlay;
 use crate::session::ControlMsg;
 use crossbeam_channel::Sender;
 use global_key_listener::KeyListenerState;
@@ -113,14 +114,34 @@ pub fn run(
     let open_data_id = open_data_item.id().clone();
     let quit_id = quit_item.id().clone();
 
+    // On-screen recording indicator (best-effort; dictation works without it).
+    let mut overlay = Overlay::new(&event_loop)
+        .map_err(|e| eprintln!("[ito-tray] Overlay unavailable: {e:#}"))
+        .ok();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        if let tao::event::Event::RedrawRequested(id) = &event {
+            if let Some(ov) = overlay.as_mut() {
+                if *id == ov.id() {
+                    ov.render();
+                }
+            }
+        }
 
         if let tao::event::Event::UserEvent(user_event) = event {
             match user_event {
                 UserEvent::Status(status) => {
                     let _ = tray.set_icon(Some(tray_icon(color_for_status(&status))));
                     let _ = tray.set_tooltip(Some(format!("Ito — {status}")));
+                    if let Some(ov) = overlay.as_mut() {
+                        if status.starts_with("Recording") {
+                            ov.show();
+                        } else {
+                            ov.hide();
+                        }
+                    }
                 }
                 UserEvent::Menu(menu_event) => {
                     let id = menu_event.id();

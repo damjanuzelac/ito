@@ -17,6 +17,8 @@ mod groq;
 mod history;
 mod hotkeys;
 mod model_download;
+#[cfg(windows)]
+mod overlay;
 mod prompt;
 mod session;
 #[cfg(windows)]
@@ -68,10 +70,17 @@ fn transcribe_file(path: &str) -> Result<()> {
         resample_linear_i16(&samples, rate, audio_pipeline::SAMPLE_RATE)
     };
 
-    let engine = session::prepare_engine(&config, &|status| eprintln!("[ito-tray] {status}"))?;
+    let engine =
+        session::prepare_engine_if_needed(&config, &|status| eprintln!("[ito-tray] {status}"))?;
 
     let context = prompt::WindowContext::default();
-    match session::process_audio(&engine, &config, &samples, ItoMode::Transcribe, &context)? {
+    match session::process_audio(
+        engine.as_ref(),
+        &config,
+        &samples,
+        ItoMode::Transcribe,
+        &context,
+    )? {
         Some((text_to_insert, transcript, llm_output)) => {
             println!("transcript: {transcript}");
             if let Some(llm) = llm_output {
