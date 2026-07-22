@@ -3,6 +3,11 @@ name = "ito-tray"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# GPU-accelerated transcription. Off by default so CPU-only and CI builds keep
+# working; enable with `--features cuda` on a machine with the CUDA toolkit.
+cuda = ["whisper-rs/cuda"]
+
 [dependencies]
 anyhow = "1"
 chrono = "0.4"
@@ -22,8 +27,13 @@ global-key-listener = { path = "../global-key-listener" }
 text-writer = { path = "../text-writer" }
 
 [target.'cfg(windows)'.dependencies]
-tao = "0.30"
+tao = { version = "0.30", features = ["rwh_06"] }
 tray-icon = "0.19"
+softbuffer = "0.4"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [build-dependencies]
 tauri-winres = "0.3.5"

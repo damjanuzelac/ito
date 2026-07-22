@@ -2,6 +2,7 @@
 
 use crate::config::{self, Config};
 use crate::hotkeys::register_config_hotkeys;
+use crate::overlay::Overlay;
 use crate::session::ControlMsg;
 use crossbeam_channel::Sender;
 use global_key_listener::KeyListenerState;
@@ -17,8 +18,13 @@ pub enum UserEvent {
     Menu(MenuEvent),
 }
 
+// Status colors for the generated tray icon.
+const COLOR_IDLE: [u8; 3] = [0x43, 0x67, 0x9d]; // Ito blue — Ready/Disabled
+const COLOR_RECORDING: [u8; 3] = [0xd0, 0x3b, 0x3b]; // red — actively recording
+const COLOR_BUSY: [u8; 3] = [0xe0, 0x9b, 0x2a]; // amber — transcribing/loading
+
 /// A simple generated icon (filled circle) so no image assets are needed.
-fn tray_icon() -> Icon {
+fn tray_icon(rgb: [u8; 3]) -> Icon {
     const SIZE: i32 = 32;
     let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
     let center = (SIZE - 1) as f32 / 2.0;
@@ -29,13 +35,27 @@ fn tray_icon() -> Icon {
             let dy = y as f32 - center;
             let inside = (dx * dx + dy * dy).sqrt() <= radius;
             if inside {
-                rgba.extend_from_slice(&[0x43, 0x67, 0x9d, 0xff]); // Ito blue
+                rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 0xff]);
             } else {
                 rgba.extend_from_slice(&[0, 0, 0, 0]);
             }
         }
     }
     Icon::from_rgba(rgba, SIZE as u32, SIZE as u32).expect("Failed to build tray icon")
+}
+
+/// Picks the icon color for a status string emitted by the session loop.
+fn color_for_status(status: &str) -> [u8; 3] {
+    if status.starts_with("Recording") {
+        COLOR_RECORDING
+    } else if status.starts_with("Transcribing")
+        || status.starts_with("Loading")
+        || status.starts_with("Downloading")
+    {
+        COLOR_BUSY
+    } else {
+        COLOR_IDLE
+    }
 }
 
 fn open_in_explorer(path: &std::path::Path) {
@@ -85,7 +105,7 @@ pub fn run(
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("Ito — starting...")
-        .with_icon(tray_icon())
+        .with_icon(tray_icon(COLOR_BUSY))
         .build()
         .expect("Failed to create tray icon");
 
@@ -94,13 +114,34 @@ pub fn run(
     let open_data_id = open_data_item.id().clone();
     let quit_id = quit_item.id().clone();
 
+    // On-screen recording indicator (best-effort; dictation works without it).
+    let mut overlay = Overlay::new(&event_loop)
+        .map_err(|e| eprintln!("[ito-tray] Overlay unavailable: {e:#}"))
+        .ok();
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        if let tao::event::Event::RedrawRequested(id) = &event {
+            if let Some(ov) = overlay.as_mut() {
+                if *id == ov.id() {
+                    ov.render();
+                }
+            }
+        }
 
         if let tao::event::Event::UserEvent(user_event) = event {
             match user_event {
                 UserEvent::Status(status) => {
+                    let _ = tray.set_icon(Some(tray_icon(color_for_status(&status))));
                     let _ = tray.set_tooltip(Some(format!("Ito — {status}")));
+                    if let Some(ov) = overlay.as_mut() {
+                        if status.starts_with("Recording") {
+                            ov.show();
+                        } else {
+                            ov.hide();
+                        }
+                    }
                 }
                 UserEvent::Menu(menu_event) => {
                     let id = menu_event.id();
