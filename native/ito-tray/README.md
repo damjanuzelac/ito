@@ -17,8 +17,12 @@ focused application. Transcription runs in-process via
 - **History** — transcripts are stored in a local SQLite database
 - **Auto-downloaded model** — the ggml Whisper model is fetched from Hugging
   Face on first run
+- **Local or cloud transcription** — run the embedded whisper.cpp locally
+  (optionally on the GPU via CUDA) or delegate to the Groq API
 - **Status tray icon** — blue when idle, red while recording, amber while the
   model loads or transcribes
+- **On-screen recording indicator** — a small always-on-top, click-through
+  "REC" overlay near the bottom of the screen while recording
 - **Constrained language detection** — with `language = "auto"`, detection is
   restricted to `auto_languages` (default `["en", "hr"]`) so short clips aren't
   mis-detected as an unrelated language
@@ -60,9 +64,10 @@ hotkey_transcribe = ["ControlLeft", "MetaLeft"]  # Ctrl+Win
 hotkey_edit = ["Alt", "ControlLeft"]             # Ctrl+Alt
 microphone = "default"           # or an exact input device name
 provider = "local"               # local (embedded whisper) | groq (cloud API)
-model = "small"                  # tiny | base | small | medium | large-v3
+model = "small"                  # tiny | base | small | medium | large-v3 | large-v3-turbo
 language = "auto"                # or e.g. "en", "hr"
 auto_languages = ["en", "hr"]    # candidates when language = "auto"
+language_detect_model = "tiny"   # small local model used to pick the language for groq
 dictionary = []                  # e.g. ["Zagreb", "Postgres", "Uzelac"]
 no_speech_threshold = 0.6
 groq_api_key = ""                # optional; enables edit mode + groq provider
@@ -72,9 +77,14 @@ groq_transcription_model = "whisper-large-v3-turbo"
 
 With `provider = "groq"` (and a `groq_api_key`), clips are sent to Groq's
 transcription API instead of the local model — much faster than CPU inference,
-at the cost of audio leaving the machine. The local model is not downloaded or
-loaded in this mode. Changing `provider` requires an app restart. If a Groq
-request fails while the local model is loaded, transcription falls back to it.
+at the cost of audio leaving the machine. Changing `provider` requires an app
+restart. If a Groq request fails while the local model is loaded, transcription
+falls back to it.
+
+To keep the API from guessing the language, `language = "auto"` in the Groq
+mode loads a small local `language_detect_model` (default `tiny`, ~75 MB) that
+resolves the language among `auto_languages`; the API is then told explicitly.
+With a fixed `language` (e.g. `"hr"`) no local model is loaded at all.
 
 Key names are raw [rdev](https://github.com/heyito/rdev) names, e.g.
 `ControlLeft`, `MetaLeft` (Win key), `Alt`, `ShiftLeft`, `KeyA`, `Function`.
