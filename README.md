@@ -1,430 +1,181 @@
-# [DEPRECATED] - This project is no longer maintained
+# Ito (local-first fork)
 
-> **Note**: This fork has been simplified into a **single-user, local-first build**. There are no
-> accounts, no billing, no telemetry and no cloud sync. Transcription runs against a **local
-> Whisper server** by default (Groq cloud remains an optional provider via `GROQ_API_KEY`).
-> See [Quick Start](#-quick-start) below.
->
-> There is also **Ito Tray** — a standalone Rust `.exe` for Windows with the whole pipeline
-> (hotkey → mic → embedded whisper.cpp → typing) in a single process, no Electron/Docker/server
-> needed. See [native/ito-tray/README.md](native/ito-tray/README.md).
+Hold a hotkey, speak, release — the transcript is typed into whatever
+application has focus.
 
-# Ito
+This is a **single-user, local-first fork** of [heyito/ito](https://github.com/heyito/ito).
+The upstream project is no longer maintained. This fork strips out everything
+that phoned home: there are **no accounts, no billing, no telemetry and no
+cloud sync**. Transcription runs against a local Whisper server by default;
+Groq is an optional cloud provider you enable with your own API key.
 
-<div align="center">
-  <img src="resources/build/icon.png" width="128" height="128" alt="Ito Logo" />
-  
-  <h3>Smart dictation. Everywhere you want.</h3>
-  
-  <p>
-    <strong>Ito</strong> is an intelligent voice assistant that brings seamless voice dictation to any application on your computer. Simply hold down your trigger key, speak naturally, and watch your words appear instantly in any text field.
-  </p>
+There are two independent ways to run it:
 
-  <p>
-    <img alt="macOS" src="https://img.shields.io/badge/macOS-supported-blue?logo=apple&logoColor=white">
-    <img alt="Windows" src="https://img.shields.io/badge/Windows-supported-blue?logo=windows&logoColor=white">
-    <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-green">
-    <img alt="License" src="https://img.shields.io/badge/license-GPL-blue">
-  </p>
-</div>
+| | **Electron app** | **Ito Tray** |
+|---|---|---|
+| Platforms | macOS, Windows | Windows only |
+| What you run | Electron UI + gRPC server in Docker | one `.exe`, nothing else |
+| Transcription | local Whisper (speaches) container, or Groq | embedded whisper.cpp, or Groq |
+| GPU | — | optional CUDA build |
+| Docs | this file | [native/ito-tray/README.md](native/ito-tray/README.md) |
+
+If you just want dictation on Windows with the least moving parts, use **Ito
+Tray** — it needs no Docker, no server and no Node.
 
 ---
 
-## ✨ Features
+## Ito Tray (Windows, standalone)
 
-### 🎙️ **Universal Voice Dictation**
+The whole pipeline (hotkey → microphone → whisper.cpp → typing) in a single
+process. Hold `Ctrl+Win`, speak, release.
 
-- **Works in any app**: Emails, documents, chat applications, web browsers, code editors
-- **Global keyboard shortcuts**: Customizable trigger keys that work system-wide
-- **Real-time transcription**: High-accuracy speech-to-text powered by advanced AI models
-- **Instant text insertion**: Automatically types transcribed text into the focused text field
+```powershell
+cd native
+cargo build --release -p ito-tray --target x86_64-pc-windows-msvc
+# → native/target/x86_64-pc-windows-msvc/release/ito-tray.exe
+```
 
-### 🧠 **Smart & Adaptive**
+Needs the Rust MSVC toolchain plus CMake and LLVM/Clang (whisper-rs compiles
+whisper.cpp). With an NVIDIA GPU, add `--features cuda` for roughly an order of
+magnitude speedup. Configuration lives at `%APPDATA%\Ito-tray\config.toml`.
 
-- **Custom dictionary**: Add technical terms, names, and specialized vocabulary
-- **Context awareness**: Learns from your usage patterns to improve accuracy
-- **Multi-language support**: Transcribe in multiple languages
-- **Intelligent punctuation**: Automatically adds appropriate punctuation
-
-### ⚙️ **Powerful Customization**
-
-- **Flexible shortcuts**: Configure any key combination as your trigger
-- **Audio preferences**: Choose your preferred microphone
-- **Privacy controls**: Local processing options and data control settings
-- **Seamless integration**: Works with any application
-
-### 💾 **Data Management**
-
-- **Notes system**: Automatically save transcriptions for later reference
-- **Interaction history**: Track your dictation sessions and improve over time
-- **Cloud sync**: Keep your settings and data synchronized across devices
-- **Export capabilities**: Export your notes and interaction data
+Full manual: **[native/ito-tray/README.md](native/ito-tray/README.md)**.
 
 ---
 
-## 🚀 Quick Start
+## Electron app
 
 ### Prerequisites
 
-- **macOS 10.15+** or **Windows 10+**
-- **Node.js 20+** and **Bun** (for development)
-- **Rust toolchain** (for building native components)
-- **Microphone access** and **Accessibility permissions**
+- macOS 10.15+ or Windows 10+
+- [Bun](https://bun.sh/) and Node.js 20+
+- [Rust](https://rustup.rs/) — the native helpers are Rust binaries
+- Docker — runs the gRPC server and the local Whisper container
+- Microphone permission, plus Accessibility permission on macOS (needed for
+  global hotkeys and text insertion)
 
-### Installation
-
-1. **Download the latest release** from [heyito.ai](https://www.heyito.ai/) or the [GitHub releases page](https://github.com/heyito/ito/releases)
-
-2. **Install the application**:
-   - **macOS**: Open the `.dmg` file and drag Ito to Applications
-   - **Windows**: Run the `.exe` installer and follow the setup wizard
-
-3. **Grant permissions** when prompted:
-   - **Microphone access**: Required for voice input
-   - **Accessibility access**: Required for global keyboard shortcuts and text insertion
-
-4. **Complete the guided onboarding process** — no account needed; everything is stored locally.
-
-### First Use
-
-1. **Configure your trigger key**: Choose a comfortable keyboard shortcut (default: `Fn + Space`)
-2. **Test your microphone**: Ensure clear audio input during the setup process
-3. **Try it out**: Hold your trigger key and speak into any text field
-4. **Customize settings**: Adjust voice sensitivity, shortcuts, and preferences
-
----
-
-## 🛠️ Development
-
-### Building from Source
-
-> **Important**: Ito requires a local transcription server for voice processing. See [server/README.md](server/README.md) for detailed server setup instructions.
+### Running from source
 
 ```bash
-# Clone the repository
-git clone https://github.com/heyito/ito.git
+git clone <your fork url>
 cd ito
-
-# Install dependencies
 bun install
 
-# Set up environment variables
-cp .env.example .env
+# Build the native helper binaries
+bun build:rust:mac      # or: bun build:rust:win
 
-# Build native components (Rust binaries)
-./build-binaries.sh
-
-# Set up and start the server (required for transcription)
-# This starts the Ito gRPC server plus a local Whisper (speaches) container.
-# No API keys needed; add GROQ_API_KEY to server/.env only if you want the
-# optional Groq cloud provider or edit mode ("hey ito" commands).
+# Start the gRPC server + local Whisper (from the server directory)
 cd server
-cp .env.example .env  # Optional: adjust local Whisper model / add GROQ_API_KEY
+cp .env.example .env    # optional: adjust the Whisper model, or add GROQ_API_KEY
 docker compose up --build
 cd ..
 
-# Start the Electron app (in a new terminal)
-bun run dev
+# Start the app in another terminal
+bun dev
 ```
 
-### Build Requirements
+The server is required — the Electron app sends audio to it over gRPC. See
+[server/README.md](server/README.md) for details.
 
-#### All Platforms
+### Default hotkeys
 
-- **Rust**: Install via [rustup.rs](https://rustup.rs/)
-  - **Windows users**: See Windows-specific instructions below for GNU toolchain setup
-  - **macOS/Linux users**: Default installation is sufficient
+| Mode | macOS | Windows |
+|---|---|---|
+| Transcribe | `Fn` | `Ctrl` + `Win` |
+| Edit ("hey ito" commands) | `Ctrl` + `Fn` | `Alt` + `Ctrl` |
 
-#### macOS
+Both are configurable in Settings. Edit mode rewrites the dictation as an
+instruction and needs a `GROQ_API_KEY` on the server.
 
-- **Xcode Command Line Tools**: `xcode-select --install`
+### What the app gives you
 
-#### Windows
+- Dictation into any focused text field, system-wide
+- **Dictionary** — custom vocabulary fed to the transcription model
+- **Notes** — transcripts saved locally
+- Interaction history in a local SQLite database
+- Microphone and shortcut settings
 
-**Required Setup:**
-
-This setup uses git bash for shell operations. Download from [git](https://git-scm.com/downloads)
-
-1. **Install Docker Desktop**: Download from [docker.com](https://www.docker.com/products/docker-desktop/) and ensure it's running
-
-2. **Install Rust** (with GNU target)
-
-Download and run the official [Rust installer for Windows](https://rustup.rs/).  
-This installs `rustup` and the MSVC toolchain by default.
-
-Add the GNU target (needed for our native components):
-
-    rustup toolchain install stable-x86_64-pc-windows-gnu
-    rustup target add x86_64-pc-windows-gnu
+Everything is stored on your machine. The analytics module is a no-op stub
+kept only so call sites still compile.
 
 ---
 
-3. **Install 7-Zip**
+## Transcription providers
 
-   winget install 7zip.7zip
+The server talks to one of two backends:
 
----
+- **Local Whisper** (default) — the [speaches](https://github.com/speaches-ai/speaches)
+  container started by `docker compose`, listening on port 8000. Audio never
+  leaves your machine.
+- **Groq** — set `GROQ_API_KEY` in `server/.env`. Faster, but audio is sent to
+  Groq. Also required for edit mode, which needs an LLM.
 
-4. **Install GCC & MinGW-w64 via MSYS2**
-
-Install [MSYS2](https://www.msys2.org/).
-
-Open the **MSYS2 MinGW x64** shell (from the Start Menu).
-
-Update and install the toolchain:
-
-    pacman -Syu       # run twice if asked to restart
-    pacman -S --needed mingw-w64-x86_64-toolchain
-
-Verify the tools exist:
-
-    ls /mingw64/bin/gcc.exe /mingw64/bin/dlltool.exe
+Ito Tray has the same choice, configured in its own `config.toml`.
 
 ---
 
-5. **Use the MinGW tools when building** (Git Bash)
+## Development
 
-You normally develop and build in **Git Bash**. Before building, prepend the MinGW path:
+### Common commands
 
-    export PATH="/c/msys64/mingw64/bin:$PATH"
-    export DLLTOOL="/c/msys64/mingw64/bin/dlltool.exe"
-    export CC_x86_64_pc_windows_gnu="/c/msys64/mingw64/bin/x86_64-w64-mingw32-gcc.exe"
-    export AR_x86_64_pc_windows_gnu="/c/msys64/mingw64/bin/ar.exe"
-    export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="/c/msys64/mingw64/bin/x86_64-w64-mingw32-gcc.exe"
+```bash
+bun dev             # electron-vite dev with watch
+bun runAllTests     # lib + server + app + native tests
+bun lint            # ESLint       (bun lint:fix to fix)
+bun format          # Prettier     (bun format:fix to fix)
+bun type-check      # tsc --noEmit
+bun lint:native     # clippy       (bun lint:fix:native to fix)
+bun format:native   # rustfmt      (bun format:fix:native to fix)
+```
 
-Check you’re picking up the right ones:
+Packaging: `bun build:mac` / `bun build:win`.
 
-    which gcc       # -> /c/msys64/mingw64/bin/gcc.exe
-    which dlltool   # -> /c/msys64/mingw64/bin/dlltool.exe
-
-⚠️ **Do not add `C:\msys64\ucrt64\bin` to PATH.** That’s the wrong runtime and will break linking.
-
-💡 To avoid running these exports every session, add the lines above to your Git Bash `~/.bashrc` file. They will be applied automatically whenever you open a new Git Bash window.
-
----
-
-6.  **Restart Git Bash if you update MSYS2**
-
-Whenever you update MSYS2 packages with `pacman -Syu`, restart Git Bash so the changes take effect.
-
-> **Note**: Windows builds use Docker for cross-compilation to ensure consistent builds. The Docker container handles the Windows build environment automatically.
-
-### Project Structure
+### Layout
 
 ```
 ito/
-├── app/                    # Electron renderer (React frontend)
-│   ├── components/         # React components
-│   ├── store/             # Zustand state management
-│   └── styles/            # TailwindCSS styles
-├── lib/                   # Shared library code
-│   ├── main/              # Electron main process
-│   ├── preload/           # Preload scripts & IPC
-│   └── media/             # Audio/keyboard native interfaces
-├── native/                # Native components (Rust/Swift)
-│   ├── audio-recorder/    # Audio capture (Rust)
-│   ├── global-key-listener/ # Keyboard events (Rust)
-│   ├── text-writer/       # Text insertion (Rust)
-│   └── active-application/ # Get the active application for context (Rust)
-├── server/                # gRPC transcription server
-│   ├── src/               # Server implementation
-│   └── infra/             # AWS infrastructure (CDK)
-└── resources/             # Build resources & assets
+├── app/          Electron renderer (React + Zustand + Tailwind)
+├── lib/          shared code: main process, preload/IPC, media interfaces
+├── native/       Rust workspace (and one Swift package)
+│   ├── audio-recorder/        microphone capture + resampling
+│   ├── global-key-listener/   global hotkey capture
+│   ├── text-writer/           text insertion
+│   ├── active-application/    focused-window detection
+│   ├── selected-text-reader/  selected text (macOS/Windows only)
+│   ├── macos-text/            macOS text helpers
+│   ├── cursor-context/        Swift; cursor context on macOS
+│   └── ito-tray/              standalone Windows tray app
+├── server/       gRPC transcription server (Bun) + docker-compose
+├── scripts/      build and maintenance scripts
+└── resources/    icons and build assets
 ```
 
-### Available Scripts
+### Native tests
+
+The Rust modules are a Cargo workspace:
 
 ```bash
-# Development
-bun run dev                 # Start with hot reload
-bun run dev:rust           # Build Rust components and start dev
-
-# Building Native Components
-bun run build:rust         # Build for current platform
-bun run build:rust:mac     # Build for macOS (with universal binary)
-bun run build:rust:win     # Build for Windows
-
-# Building Application
-bun run build:mac          # Build for macOS
-bun run build:win          # Build for Windows
-./build-app.sh mac          # Build macOS using build script
-./build-app.sh windows      # Build Windows using build script (requires Docker)
-
-# Code Quality
-bun run lint               # Run ESLint
-bun run format             # Run Prettier
-bun run lint:fix           # Fix linting issues
+cd native
+cargo test --workspace
 ```
 
----
-
-## 🏗️ Architecture
-
-### Client Architecture
-
-**Ito** is built as a modern Electron application with a sophisticated multi-process architecture:
-
-- **Main Process**: Handles system integration, permissions, and native component coordination
-- **Renderer Process**: React-based UI with real-time audio visualization
-- **Preload Scripts**: Secure IPC bridge between main and renderer processes
-- **Native Components**: High-performance Rust binaries for audio capture and keyboard handling
-
-### Technology Stack
-
-**Frontend:**
-
-- **Electron** - Cross-platform desktop framework
-- **React 19** - Modern UI library with concurrent features
-- **TypeScript** - Type-safe development
-- **TailwindCSS** - Utility-first styling
-- **Zustand** - Lightweight state management
-- **Framer Motion** - Smooth animations
-
-**Backend:**
-
-- **Node.js** - Runtime environment
-- **gRPC** - High-performance RPC for transcription services
-- **SQLite** - Local data storage
-- **Protocol Buffers** - Efficient data serialization
-
-**Native Components:**
-
-- **Rust** - System-level audio recording and keyboard event handling
-- **Swift** - macOS-specific text manipulation and accessibility features
-- **cpal** - Cross-platform audio library
-- **enigo** - Cross-platform input simulation
-
-**Infrastructure:**
-
-- **AWS CDK** - Infrastructure as code
-- **Docker** - Containerized deployments
-- **Auth0** - Authentication and user management
-
-### Communication Flow
-
-```mermaid
-graph TD
-    A[User Holds Trigger Key] --> B[Global Key Listener]
-    B --> C[Main Process]
-    C --> D[Audio Recorder Service]
-    D --> E[gRPC Transcription Service]
-    E --> F[AI Transcription Model]
-    F --> G[Transcribed Text]
-    G --> H[Text Writer Service]
-    H --> I[Active Text Field]
-```
+`ito-tray` is excluded from the MinGW cross-compile CI check — build it with
+MSVC on Windows. `selected-text-reader` does not compile on Linux.
 
 ---
 
-## 🔧 Configuration
+## Acknowledgments
 
-### Keyboard Shortcuts
+- **[heyito/ito](https://github.com/heyito/ito)** — the upstream project this
+  is forked from, and the origin of essentially all of the application code.
+- **[electron-react-app](https://github.com/guasam/electron-react-app)** by
+  @guasam — the Electron + React template upstream was built on.
+- **[whisper.cpp](https://github.com/ggerganov/whisper.cpp)** and
+  [whisper-rs](https://github.com/tazz4843/whisper-rs) — embedded transcription
+  in Ito Tray.
+- **[speaches](https://github.com/speaches-ai/speaches)** — the local Whisper
+  server used by the Electron build.
 
-Customize your trigger keys in **Settings > Keyboard**:
+## License
 
-- **Single key**: `Space`, `Fn`, etc.
-- **Key combinations**: `Cmd + Space`, `Ctrl + Shift + V`, etc.
-- **Complex shortcuts**: `Fn + Cmd + Space` for advanced workflows
-
-### Audio Settings
-
-Fine-tune audio capture in **Settings > Audio**:
-
-- **Microphone selection**: Choose from available input devices
-- **Sensitivity adjustment**: Optimize for your voice and environment
-- **Noise reduction**: Filter background noise automatically
-- **Audio feedback**: Enable/disable sound effects
-
-### Privacy & Data
-
-Control your data in **Settings > General**:
-
-- **Local processing**: Keep voice data on your device
-- **Cloud sync**: Synchronize settings across devices
-- **Analytics**: Share anonymous usage data (optional)
-- **Data export**: Download your notes and interaction history
-
----
-
-## 🔒 Privacy & Security
-
-### Data Handling
-
-- **Local-enabled**: Voice processing can be done entirely on your device or using our cloud
-- **Encrypted transmission**: All network communication uses TLS encryption
-- **Minimal data collection**: Only essential data is processed and stored
-- **User control**: Full control and transparency over data retention and deletion
-
-### Permissions
-
-**Ito** requires specific system permissions to function:
-
-- **Microphone Access**: To capture your voice for transcription
-- **Accessibility Access**: To detect keyboard shortcuts and insert text
-- **Network Access**: For cloud features and updates (optional)
-
-### Open Source
-
-This project is open source under the GNU General Public License. You can:
-
-- Audit the source code for security and privacy
-- Contribute improvements and bug fixes
-- Fork and customize for your specific needs
-- Report security issues through responsible disclosure
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Whether you're fixing bugs, adding features, or improving documentation, your help makes **Ito** better for everyone.
-
-### Getting Started
-
-1. **Fork the repository** and clone your fork
-2. **Create a feature branch** from `dev`
-3. **Make your changes** with clear commit messages
-4. **Test thoroughly** across supported platforms
-5. **Submit a pull request** with a detailed description
-
-### Development Guidelines
-
-- **Code Style**: Use Prettier and ESLint configurations
-- **Type Safety**: Maintain strong TypeScript typing
-- **Testing**: Add tests for new features
-- **Documentation**: Update docs for API changes
-- **Performance**: Consider impact on time between recording and text insertion
-
-### Areas for Contribution
-
-- **Accuracy improvements**: Better transcription algorithms
-- **Language support**: Additional language models
-- **UI/UX enhancements**: Better user experience
-- **Platform support**: Windows stability testing, Linux compatibility
-- **Documentation**: Tutorials, guides, and examples
-
----
-
-## 📄 License
-
-This project is licensed under the **GNU General Public License** - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-**Ito** is built with and inspired by amazing open source projects:
-
-- **[Electron React App](https://github.com/guasam/electron-react-app)** by @guasam - The foundational template that provided our modern Electron + React architecture
-- **Electron** - Cross-platform desktop apps with web technologies
-- **React** - Modern UI development
-- **Rust** - Systems programming language for native components
-- **gRPC** - High-performance RPC framework
-- **TailwindCSS** - Utility-first CSS framework
-
----
-
-## 📞 Support
-
-- **Community**: [GitHub Discussions](https://github.com/heyito/ito/discussions)
-- **Issues**: [GitHub Issues](https://github.com/heyito/ito/issues)
-- **Website**: [heyito.ai](https://www.heyito.ai)
+GNU General Public License v3 — see [LICENSE](LICENSE).
