@@ -143,7 +143,7 @@ fn run_app(_headless_listen: bool) -> Result<()> {
             session_tx,
             move |status| {
                 std::thread::spawn(move || {
-                    session::run_session_loop(session_rx, session_config, move |s| status(s));
+                    session::run_session_loop(session_rx, session_config, status);
                 });
             },
         );

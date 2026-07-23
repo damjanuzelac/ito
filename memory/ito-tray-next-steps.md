@@ -7,16 +7,15 @@ metadata:
 
 Next steps for `native/ito-tray`, agreed 2026-07-22 after GPU + Groq work landed:
 
-1. **Redo the REC overlay visuals** — the current `overlay.rs` indicator (dark
-   rectangle, hand-drawn 5x7 "REC" bitmap font, red dot) looks bad. It renders
-   correctly now, but needs a proper design: rounded/pill shape, real text
-   rendering, possibly a level meter or pulse animation.
+1. ~~**Redo the REC overlay visuals**~~ — **done**: replaced with a
+   sound-reactive level bar above the taskbar (premultiplied-BGRA DIB through
+   `UpdateLayeredWindow`, so it has real per-pixel alpha and anti-aliased caps).
 2. **Easier online/local switching** — choosing between the Groq API and the
    local CUDA model currently means hand-editing `provider` in config.toml and
    restarting. Should be a tray-menu toggle that applies without a restart.
-3. **Pin HR/EN language selection** — auto-detection still guesses (whisper's
-   first pass produced `bs`/`pt`/`nn` before the candidate fallback corrected
-   it). Wants Croatian/English fixed explicitly rather than detected.
+   (The Language submenu added in the same round is the pattern to copy.)
+3. ~~**Pin HR/EN language selection**~~ — **done**: a Language submenu in the
+   tray writes `language` to the config and applies immediately.
 
 Context: transcription now runs on the GPU (see [[ito-tray-windows-build]]);
 `large-v3-turbo` is the active model (~1.6 GB in VRAM of the RTX 2060 SUPER's 8 GB).

@@ -27,11 +27,11 @@ global-key-listener = { path = "../global-key-listener" }
 text-writer = { path = "../text-writer" }
 
 [target.'cfg(windows)'.dependencies]
-tao = { version = "0.30", features = ["rwh_06"] }
+tao = "0.30"
 tray-icon = "0.19"
-softbuffer = "0.4"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
 ] }
 
