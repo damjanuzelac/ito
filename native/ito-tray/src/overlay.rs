@@ -1,44 +1,179 @@
-//! On-screen recording indicator: a small always-on-top, click-through
-//! "● REC" pill shown near the bottom of the primary screen while recording,
-//! so dictation is obvious without hunting for the tray icon.
+//! On-screen recording indicator: a thin, always-on-top, click-through bar
+//! just above the taskbar that grows outward from the centre with the
+//! microphone level, so dictation is obvious without hunting for the tray icon.
+//!
+//! Painted as a premultiplied-BGRA DIB pushed through `UpdateLayeredWindow`.
+//! That is the only way to get real per-pixel alpha (translucency and
+//! anti-aliased round caps) on Windows 10 — a plain opaque blit can only ever
+//! produce a hard-edged rectangle.
 
 use anyhow::{Context, Result};
-use std::num::NonZeroU32;
-use std::rc::Rc;
-use tao::dpi::{LogicalSize, PhysicalPosition};
+use std::ptr;
+use std::time::Instant;
+use tao::dpi::{PhysicalPosition, PhysicalSize};
 use tao::event_loop::EventLoopWindowTarget;
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
-use tao::window::{Window, WindowBuilder, WindowId};
-use windows_sys::Win32::Foundation::HWND;
-use windows_sys::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_ALPHA};
+use tao::window::{Window, WindowBuilder};
+use windows_sys::Win32::Foundation::{HWND, POINT, RECT, SIZE};
+use windows_sys::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, AC_SRC_ALPHA,
+    AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HDC,
+    HGDIOBJ,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SystemParametersInfoW, UpdateLayeredWindow, SPI_GETWORKAREA, ULW_ALPHA,
+};
 
-const BG: u32 = 0x001C_1C1E; // dark charcoal (softbuffer format: 0x00RRGGBB)
-const RED: u32 = 0x00E0_392E; // record dot
-const WHITE: u32 = 0x00F5_F5F5; // "REC" text
+/// Bar length at full level, as a fraction of the screen width.
+const MAX_WIDTH_FRACTION: f64 = 0.20;
+/// Bar thickness in logical pixels.
+const BAR_THICKNESS: f64 = 5.0;
+/// Padding around the bar so anti-aliased caps are never clipped.
+const PADDING: f64 = 4.0;
+/// Gap between the bar and the top of the taskbar.
+const BOTTOM_GAP: f64 = 10.0;
+/// Shortest the bar gets, as a fraction of the track.
+const MIN_FILL: f32 = 0.30;
+/// Seconds per breath. A cosine ease makes both ends of the swing settle
+/// gently, so the motion reads as calm rather than mechanical.
+const BREATH_PERIOD: f32 = 2.6;
 
-// 5x7 bitmaps for the only three glyphs we render, top row first.
-const GLYPH_R: [u8; 7] = [
-    0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001,
-];
-const GLYPH_E: [u8; 7] = [
-    0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111,
-];
-const GLYPH_C: [u8; 7] = [
-    0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110,
-];
+/// Bar colour, chosen by dictation language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BarColor {
+    /// Croatian
+    Red,
+    /// English
+    Blue,
+    /// Language not pinned
+    Neutral,
+}
+
+impl BarColor {
+    /// Straight (non-premultiplied) RGB.
+    const fn rgb(self) -> (f32, f32, f32) {
+        match self {
+            Self::Red => (0.91, 0.24, 0.20),
+            Self::Blue => (0.25, 0.55, 0.96),
+            Self::Neutral => (0.78, 0.78, 0.80),
+        }
+    }
+
+    pub fn for_language(language: &str) -> Self {
+        match language {
+            "hr" => Self::Red,
+            "en" => Self::Blue,
+            _ => Self::Neutral,
+        }
+    }
+}
+
+/// Breathing curve in 0..1 for a given time since the bar appeared.
+fn breathing_level(elapsed_secs: f32) -> f32 {
+    let turns = elapsed_secs / BREATH_PERIOD * std::f32::consts::TAU;
+    // cos eases into both extremes, so there is no visible turnaround snap.
+    (0.5 - 0.5 * turns.cos()).clamp(0.0, 1.0)
+}
+
+/// Half-length of the drawn bar, in pixels, for a smoothed level.
+fn half_length(level: f32, track_width: f64) -> f64 {
+    let fill = MIN_FILL + (1.0 - MIN_FILL) * level.clamp(0.0, 1.0);
+    track_width * f64::from(fill) / 2.0
+}
+
+/// Owns the GDI device context and DIB the bar is painted into.
+struct Canvas {
+    dc: HDC,
+    bitmap: HBITMAP,
+    old_bitmap: HGDIOBJ,
+    pixels: *mut u32,
+    width: i32,
+    height: i32,
+}
+
+impl Canvas {
+    /// Creates a top-down 32-bit DIB. A negative height makes row 0 the top
+    /// row, so buffer order matches screen order.
+    fn new(width: i32, height: i32) -> Result<Self> {
+        let mut info: BITMAPINFO = unsafe { std::mem::zeroed() };
+        info.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        };
+
+        let mut pixels: *mut core::ffi::c_void = ptr::null_mut();
+        unsafe {
+            let dc = CreateCompatibleDC(ptr::null_mut());
+            if dc.is_null() {
+                anyhow::bail!("CreateCompatibleDC failed");
+            }
+            let bitmap =
+                CreateDIBSection(dc, &info, DIB_RGB_COLORS, &mut pixels, ptr::null_mut(), 0);
+            if bitmap.is_null() || pixels.is_null() {
+                DeleteDC(dc);
+                anyhow::bail!("CreateDIBSection failed");
+            }
+            let old_bitmap = SelectObject(dc, bitmap as HGDIOBJ);
+            Ok(Self {
+                dc,
+                bitmap,
+                old_bitmap,
+                pixels: pixels.cast::<u32>(),
+                width,
+                height,
+            })
+        }
+    }
+
+    fn as_mut_slice(&mut self) -> &mut [u32] {
+        let len = (self.width * self.height) as usize;
+        unsafe { std::slice::from_raw_parts_mut(self.pixels, len) }
+    }
+}
+
+impl Drop for Canvas {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.old_bitmap);
+            DeleteObject(self.bitmap as HGDIOBJ);
+            DeleteDC(self.dc);
+        }
+    }
+}
 
 pub struct Overlay {
-    window: Rc<Window>,
-    surface: softbuffer::Surface<Rc<Window>, Rc<Window>>,
-    _context: softbuffer::Context<Rc<Window>>,
+    window: Window,
+    canvas: Canvas,
+    color: BarColor,
+    shown_at: Instant,
+    level: f32,
     visible: bool,
 }
 
 impl Overlay {
-    pub fn new<T>(target: &EventLoopWindowTarget<T>) -> Result<Self> {
+    pub fn new<T>(target: &EventLoopWindowTarget<T>, language: &str) -> Result<Self> {
+        let scale = target
+            .primary_monitor()
+            .map_or(1.0, |monitor| monitor.scale_factor());
+        let screen_width = target
+            .primary_monitor()
+            .map_or(1920.0, |monitor| f64::from(monitor.size().width));
+
+        let width = (screen_width * MAX_WIDTH_FRACTION + PADDING * 2.0 * scale).round() as i32;
+        let height = ((BAR_THICKNESS + PADDING * 2.0) * scale).round() as i32;
+
         let window = WindowBuilder::new()
             .with_title("Ito Recording")
-            .with_inner_size(LogicalSize::new(148.0, 48.0))
+            .with_inner_size(PhysicalSize::new(width, height))
             .with_decorations(false)
             .with_always_on_top(true)
             .with_resizable(false)
@@ -47,127 +182,221 @@ impl Overlay {
             .with_skip_taskbar(true)
             .build(target)
             .context("Failed to create overlay window")?;
-        // Never steal clicks from the app being dictated into.
+        // Sets WS_EX_TRANSPARENT (clicks pass through to the app being
+        // dictated into) *and* WS_EX_LAYERED, which UpdateLayeredWindow needs.
         let _ = window.set_ignore_cursor_events(true);
 
-        let window = Rc::new(window);
-        let context = softbuffer::Context::new(window.clone())
-            .map_err(|e| anyhow::anyhow!("softbuffer context: {e}"))?;
-        let surface = softbuffer::Surface::new(&context, window.clone())
-            .map_err(|e| anyhow::anyhow!("softbuffer surface: {e}"))?;
-
+        let canvas = Canvas::new(width, height)?;
         let overlay = Self {
             window,
-            surface,
-            _context: context,
+            canvas,
+            color: BarColor::for_language(language),
+            shown_at: Instant::now(),
+            level: 0.0,
             visible: false,
         };
-        overlay.position_bottom_center();
+        overlay.position_above_taskbar();
         Ok(overlay)
     }
 
-    pub fn id(&self) -> WindowId {
-        self.window.id()
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    pub fn set_language(&mut self, language: &str) {
+        self.color = BarColor::for_language(language);
+        if self.visible {
+            self.render();
+        }
     }
 
     pub fn show(&mut self) {
         if !self.visible {
-            self.position_bottom_center();
-            self.window.set_visible(true);
+            self.position_above_taskbar();
+            self.shown_at = Instant::now();
+            self.level = 0.0;
             self.visible = true;
+            self.render();
+            self.window.set_visible(true);
         }
-        // Click-through makes the window WS_EX_LAYERED, and a layered window
-        // stays blank unless its alpha is set — without this only the drop
-        // shadow is visible. tao applies the style asynchronously, so this is
-        // re-applied on every show rather than once at construction.
-        unsafe {
-            SetLayeredWindowAttributes(self.window.hwnd() as HWND, 0, 255, LWA_ALPHA);
-        }
-        self.window.request_redraw();
     }
 
     pub fn hide(&mut self) {
         if self.visible {
             self.window.set_visible(false);
             self.visible = false;
+            self.level = 0.0;
         }
     }
 
-    fn position_bottom_center(&self) {
-        if let Some(monitor) = self.window.primary_monitor() {
-            let screen = monitor.size();
-            let win = self.window.inner_size();
-            let x = (screen.width as i32 - win.width as i32) / 2;
-            let y = screen.height as i32 - win.height as i32 - (win.height as i32 * 3 / 2);
-            self.window.set_outer_position(PhysicalPosition::new(x, y));
-        }
+    /// Advances the breathing animation one frame and repaints.
+    pub fn tick(&mut self) {
+        self.level = breathing_level(self.shown_at.elapsed().as_secs_f32());
+        self.render();
     }
 
-    /// Paints the "● REC" indicator. Called on the overlay's redraw request.
-    pub fn render(&mut self) {
+    /// Places the bar centred above the taskbar. tao's MonitorHandle only
+    /// reports full screen bounds, so the work area comes from the Win32 API.
+    fn position_above_taskbar(&self) {
         let size = self.window.inner_size();
-        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
-            return;
+        let mut work_area = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
         };
-        if self.surface.resize(w, h).is_err() {
-            return;
-        }
-        let Ok(mut buffer) = self.surface.buffer_mut() else {
+        let ok = unsafe {
+            SystemParametersInfoW(
+                SPI_GETWORKAREA,
+                0,
+                ptr::addr_of_mut!(work_area).cast::<core::ffi::c_void>(),
+                0,
+            )
+        };
+        let (area_width, area_bottom) = if ok != 0 {
+            (work_area.right - work_area.left, work_area.bottom)
+        } else if let Some(monitor) = self.window.primary_monitor() {
+            let screen = monitor.size();
+            (screen.width as i32, screen.height as i32)
+        } else {
             return;
         };
 
-        let (width, height) = (size.width as usize, size.height as usize);
-        buffer.fill(BG);
+        let scale = self.window.scale_factor();
+        let x = work_area.left + (area_width - size.width as i32) / 2;
+        let y = area_bottom - size.height as i32 - (BOTTOM_GAP * scale).round() as i32;
+        self.window.set_outer_position(PhysicalPosition::new(x, y));
+    }
 
-        // Record dot on the left.
-        let radius = (height as i32 * 7 / 24).max(6);
-        let cx = radius + height as i32 / 3;
-        let cy = height as i32 / 2;
-        for y in 0..height as i32 {
-            for x in 0..width as i32 {
-                let (dx, dy) = (x - cx, y - cy);
-                if dx * dx + dy * dy <= radius * radius {
-                    buffer[(y as usize) * width + x as usize] = RED;
+    /// Paints the capsule into the DIB and pushes it to the layered window.
+    pub fn render(&mut self) {
+        let (width, height) = (self.canvas.width, self.canvas.height);
+        let scale = self.window.scale_factor();
+        let track_width = f64::from(width) - PADDING * 2.0 * scale;
+        let half = half_length(self.level, track_width);
+        let radius = (BAR_THICKNESS * scale / 2.0).max(1.0);
+        let center_x = f64::from(width) / 2.0;
+        let center_y = f64::from(height) / 2.0;
+        let (r, g, b) = self.color.rgb();
+
+        let buffer = self.canvas.as_mut_slice();
+        buffer.fill(0);
+
+        // Capsule = every pixel within `radius` of the horizontal centre
+        // segment. The distance field gives anti-aliased round caps for free.
+        let segment_half = (half - radius).max(0.0);
+        let y_start = ((center_y - radius - 1.0).floor().max(0.0)) as i32;
+        let y_end = ((center_y + radius + 1.0).ceil().min(f64::from(height))) as i32;
+        let x_start = ((center_x - half - 1.0).floor().max(0.0)) as i32;
+        let x_end = ((center_x + half + 1.0).ceil().min(f64::from(width))) as i32;
+
+        for y in y_start..y_end {
+            let dy = f64::from(y) + 0.5 - center_y;
+            for x in x_start..x_end {
+                let dx = f64::from(x) + 0.5 - center_x;
+                // Distance to the segment: clamp x onto it, then measure.
+                let clamped = dx.clamp(-segment_half, segment_half);
+                let distance = ((dx - clamped).powi(2) + dy * dy).sqrt();
+                // 1 px feather from fully inside to fully outside.
+                let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
+                if coverage <= 0.0 {
+                    continue;
                 }
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let alpha = (coverage * 255.0).round() as u32;
+                // UpdateLayeredWindow expects premultiplied BGRA.
+                let pr = (f64::from(r) * coverage * 255.0).round() as u32;
+                let pg = (f64::from(g) * coverage * 255.0).round() as u32;
+                let pb = (f64::from(b) * coverage * 255.0).round() as u32;
+                buffer[(y * width + x) as usize] = (alpha << 24) | (pr << 16) | (pg << 8) | pb;
             }
         }
 
-        // "REC" text to the right of the dot.
-        let scale = (height / 16).max(2) as i32;
-        let text_x = cx + radius + height as i32 / 4;
-        let text_y = cy - (7 * scale) / 2;
-        let mut pen_x = text_x;
-        for glyph in [&GLYPH_R, &GLYPH_E, &GLYPH_C] {
-            draw_glyph(&mut buffer, (width, height), glyph, (pen_x, text_y), scale);
-            pen_x += 6 * scale;
-        }
+        let position = self.window.outer_position().unwrap_or_default();
+        let top_left = POINT {
+            x: position.x,
+            y: position.y,
+        };
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let source = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
 
-        let _ = buffer.present();
+        unsafe {
+            UpdateLayeredWindow(
+                self.window.hwnd() as HWND,
+                ptr::null_mut(),
+                &top_left,
+                &size,
+                self.canvas.dc,
+                &source,
+                0,
+                &blend,
+                ULW_ALPHA,
+            );
+        }
     }
 }
 
-/// Blits one 5x7 glyph in white, scaled by `scale` and clipped to the buffer.
-fn draw_glyph(
-    buffer: &mut [u32],
-    (width, height): (usize, usize),
-    glyph: &[u8; 7],
-    (ox, oy): (i32, i32),
-    scale: i32,
-) {
-    for (row, bits) in glyph.iter().enumerate() {
-        for col in 0..5 {
-            if bits & (1 << (4 - col)) == 0 {
-                continue;
-            }
-            for sy in 0..scale {
-                for sx in 0..scale {
-                    let px = ox + col * scale + sx;
-                    let py = oy + row as i32 * scale + sy;
-                    if px >= 0 && py >= 0 && (px as usize) < width && (py as usize) < height {
-                        buffer[(py as usize) * width + px as usize] = WHITE;
-                    }
-                }
-            }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn breathing_starts_small_and_swings_full() {
+        assert!(breathing_level(0.0) < 0.01);
+        assert!(breathing_level(BREATH_PERIOD / 2.0) > 0.99);
+        assert!(breathing_level(BREATH_PERIOD) < 0.01);
+    }
+
+    #[test]
+    fn breathing_stays_in_range_and_never_jumps() {
+        let step = 1.0 / 30.0; // one animation frame
+        let mut previous = breathing_level(0.0);
+        let mut time = step;
+        while time < BREATH_PERIOD * 3.0 {
+            let level = breathing_level(time);
+            assert!((0.0..=1.0).contains(&level));
+            assert!(
+                (level - previous).abs() < 0.1,
+                "frame-to-frame jump of {} at t={time}",
+                (level - previous).abs()
+            );
+            previous = level;
+            time += step;
         }
+    }
+
+    #[test]
+    fn shortest_bar_is_still_clearly_visible() {
+        let half = half_length(0.0, 400.0);
+        assert!(half > 400.0 * 0.1, "the bar must not shrink to a dot");
+        assert!(half < 400.0 / 2.0, "and must leave room to grow");
+    }
+
+    #[test]
+    fn full_level_fills_the_track() {
+        let half = half_length(1.0, 400.0);
+        assert!((half - 200.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn length_grows_with_level_and_is_clamped() {
+        assert!(half_length(0.5, 400.0) > half_length(0.2, 400.0));
+        assert!((half_length(5.0, 400.0) - half_length(1.0, 400.0)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn language_picks_the_colour() {
+        assert_eq!(BarColor::for_language("hr"), BarColor::Red);
+        assert_eq!(BarColor::for_language("en"), BarColor::Blue);
+        assert_eq!(BarColor::for_language("auto"), BarColor::Neutral);
     }
 }

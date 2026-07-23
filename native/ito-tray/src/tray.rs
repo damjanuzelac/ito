@@ -8,6 +8,7 @@ use crossbeam_channel::Sender;
 use global_key_listener::KeyListenerState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
@@ -17,6 +18,9 @@ pub enum UserEvent {
     Status(String),
     Menu(MenuEvent),
 }
+
+/// Overlay animation frame interval (~30 fps).
+const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
 // Status colors for the generated tray icon.
 const COLOR_IDLE: [u8; 3] = [0x43, 0x67, 0x9d]; // Ito blue — Ready/Disabled
@@ -89,11 +93,25 @@ pub fn run(
 
     let menu = Menu::new();
     let toggle_item = CheckMenuItem::new("Listening enabled", true, true, None);
+    let (language, provider) = {
+        let cfg = config.read().unwrap();
+        (cfg.language.clone(), cfg.provider.clone())
+    };
+    let lang_hr = CheckMenuItem::new("Croatian", true, language == "hr", None);
+    let lang_en = CheckMenuItem::new("English", true, language == "en", None);
+    let lang_auto = CheckMenuItem::new("Auto-detect language", true, language == "auto", None);
+    let use_online = CheckMenuItem::new("Online (Groq)", true, provider == "groq", None);
     let reload_item = MenuItem::new("Reload config", true, None);
     let open_data_item = MenuItem::new("Open config & history folder", true, None);
     let quit_item = MenuItem::new("Quit Ito", true, None);
     menu.append_items(&[
         &toggle_item,
+        &PredefinedMenuItem::separator(),
+        &lang_hr,
+        &lang_en,
+        &lang_auto,
+        &PredefinedMenuItem::separator(),
+        &use_online,
         &PredefinedMenuItem::separator(),
         &reload_item,
         &open_data_item,
@@ -110,23 +128,34 @@ pub fn run(
         .expect("Failed to create tray icon");
 
     let toggle_id = toggle_item.id().clone();
+    let lang_hr_id = lang_hr.id().clone();
+    let lang_en_id = lang_en.id().clone();
+    let lang_auto_id = lang_auto.id().clone();
+    let use_online_id = use_online.id().clone();
     let reload_id = reload_item.id().clone();
     let open_data_id = open_data_item.id().clone();
     let quit_id = quit_item.id().clone();
 
     // On-screen recording indicator (best-effort; dictation works without it).
-    let mut overlay = Overlay::new(&event_loop)
+    let mut overlay = Overlay::new(&event_loop, &language)
         .map_err(|e| eprintln!("[ito-tray] Overlay unavailable: {e:#}"))
         .ok();
 
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+    let mut last_frame = Instant::now();
 
-        if let tao::event::Event::RedrawRequested(id) = &event {
-            if let Some(ov) = overlay.as_mut() {
-                if *id == ov.id() {
-                    ov.render();
-                }
+    event_loop.run(move |event, _, control_flow| {
+        // While the bar is on screen it animates; otherwise the loop idles.
+        *control_flow = match overlay.as_ref() {
+            Some(ov) if ov.is_visible() => ControlFlow::WaitUntil(Instant::now() + FRAME_INTERVAL),
+            _ => ControlFlow::Wait,
+        };
+
+        // Advance on a fixed cadence: the loop also wakes on unrelated events,
+        // and animating on every one of those makes the motion uneven.
+        if let Some(ov) = overlay.as_mut() {
+            if ov.is_visible() && last_frame.elapsed() >= FRAME_INTERVAL {
+                last_frame = Instant::now();
+                ov.tick();
             }
         }
 
@@ -145,7 +174,46 @@ pub fn run(
                 }
                 UserEvent::Menu(menu_event) => {
                     let id = menu_event.id();
-                    if *id == toggle_id {
+                    if *id == lang_hr_id || *id == lang_en_id || *id == lang_auto_id {
+                        let chosen = if *id == lang_hr_id {
+                            "hr"
+                        } else if *id == lang_en_id {
+                            "en"
+                        } else {
+                            "auto"
+                        };
+                        // Radio behavior: muda toggles the clicked item itself.
+                        lang_hr.set_checked(chosen == "hr");
+                        lang_en.set_checked(chosen == "en");
+                        lang_auto.set_checked(chosen == "auto");
+
+                        let mut cfg = config.write().unwrap();
+                        cfg.language = chosen.to_string();
+                        if let Err(e) = cfg.save() {
+                            eprintln!("[ito-tray] Failed to save language: {e:#}");
+                        }
+                        drop(cfg);
+
+                        if let Some(ov) = overlay.as_mut() {
+                            ov.set_language(chosen);
+                        }
+                    } else if *id == use_online_id {
+                        let online = use_online.is_checked();
+                        let mut cfg = config.write().unwrap();
+                        cfg.provider = if online { "groq" } else { "local" }.to_string();
+                        let missing_key = online && cfg.groq_api_key.is_empty();
+                        if let Err(e) = cfg.save() {
+                            eprintln!("[ito-tray] Failed to save provider: {e:#}");
+                        }
+                        drop(cfg);
+                        let _ = tray.set_tooltip(Some(if missing_key {
+                            "Ito — Online needs a groq_api_key".to_string()
+                        } else if online {
+                            "Ito — Online (Groq)".to_string()
+                        } else {
+                            "Ito — Local".to_string()
+                        }));
+                    } else if *id == toggle_id {
                         let now_enabled = toggle_item.is_checked();
                         enabled.store(now_enabled, Ordering::SeqCst);
                         register_config_hotkeys(

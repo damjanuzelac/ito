@@ -191,6 +191,7 @@ fn transcribe(
             wav.extend_from_slice(&sample.to_le_bytes());
         }
 
+        eprintln!("[ito-tray] Groq transcription (language: {language})");
         match groq::transcribe_wav(
             &config.groq_api_key,
             &config.groq_transcription_model,
@@ -237,7 +238,7 @@ pub fn run_session_loop(
 ) {
     let engine = {
         let cfg = config.read().unwrap().clone();
-        match prepare_engine_if_needed(&cfg, &|s| status(s)) {
+        match prepare_engine_if_needed(&cfg, &status) {
             Ok(engine) => engine,
             Err(e) => {
                 status(format!("Model error: {e}"));

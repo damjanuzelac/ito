@@ -21,11 +21,12 @@ focused application. Transcription runs in-process via
   (optionally on the GPU via CUDA) or delegate to the Groq API
 - **Status tray icon** — blue when idle, red while recording, amber while the
   model loads or transcribes
-- **On-screen recording indicator** — a small always-on-top, click-through
-  "REC" overlay near the bottom of the screen while recording
-- **Constrained language detection** — with `language = "auto"`, detection is
-  restricted to `auto_languages` (default `["en", "hr"]`) so short clips aren't
-  mis-detected as an unrelated language
+- **On-screen recording bar** — a thin, always-on-top, click-through bar just
+  above the taskbar that pulses gently while recording; red for Croatian, blue
+  for English, grey when auto-detecting
+- **Language picker** — pin Croatian or English from the tray menu, or leave it
+  on auto-detect (which is restricted to `auto_languages`, default
+  `["en", "hr"]`, so short clips aren't mis-detected as an unrelated language)
 
 ## Building (Windows)
 
@@ -65,7 +66,7 @@ hotkey_edit = ["Alt", "ControlLeft"]             # Ctrl+Alt
 microphone = "default"           # or an exact input device name
 provider = "local"               # local (embedded whisper) | groq (cloud API)
 model = "small"                  # tiny | base | small | medium | large-v3 | large-v3-turbo
-language = "auto"                # or e.g. "en", "hr"
+language = "auto"                # or "hr" / "en"; also set from the tray menu
 auto_languages = ["en", "hr"]    # candidates when language = "auto"
 language_detect_model = "tiny"   # small local model used to pick the language for groq
 dictionary = []                  # e.g. ["Zagreb", "Postgres", "Uzelac"]
@@ -77,14 +78,27 @@ groq_transcription_model = "whisper-large-v3-turbo"
 
 With `provider = "groq"` (and a `groq_api_key`), clips are sent to Groq's
 transcription API instead of the local model — much faster than CPU inference,
-at the cost of audio leaving the machine. Changing `provider` requires an app
-restart. If a Groq request fails while the local model is loaded, transcription
-falls back to it.
+at the cost of audio leaving the machine. If a Groq request fails while the
+local model is loaded, transcription falls back to it.
+
+**Online (Groq)** in the tray menu flips `provider` without editing the config.
+Switching *to* online takes effect immediately. Switching *back* to local also
+works while the app still has a model loaded — but if it started up in online
+mode there is no local model in memory, so that direction needs a restart.
 
 To keep the API from guessing the language, `language = "auto"` in the Groq
 mode loads a small local `language_detect_model` (default `tiny`, ~75 MB) that
 resolves the language among `auto_languages`; the API is then told explicitly.
 With a fixed `language` (e.g. `"hr"`) no local model is loaded at all.
+
+### Language
+
+**Language** in the tray menu pins the dictation language to Croatian or
+English, or leaves it on auto-detect. The choice is written to `config.toml`
+and applies to the next dictation — no restart needed. Pinning a language is
+both faster and more reliable than auto-detect: the local model skips detection
+and the corrective second pass, and the Groq mode stops loading the detector
+model entirely.
 
 Key names are raw [rdev](https://github.com/heyito/rdev) names, e.g.
 `ControlLeft`, `MetaLeft` (Win key), `Alt`, `ShiftLeft`, `KeyA`, `Function`.
@@ -110,6 +124,8 @@ cargo run -p ito-tray -- --listen                     # headless hotkey loop
 
 - `main.rs` — CLI parsing, wiring, headless modes
 - `tray.rs` (Windows) — tao event loop + tray-icon menu and status tooltip
+- `overlay.rs` (Windows) — the recording bar, painted as a
+  premultiplied-BGRA DIB through `UpdateLayeredWindow` for per-pixel alpha
 - `hotkeys.rs` — exact-chord matching (ported from the Electron app) on top of
   the shared `global-key-listener` library; hold starts, release completes
 - `session.rs` — state machine owning capture (`audio-recorder` lib), the
