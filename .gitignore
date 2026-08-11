@@ -12,6 +12,10 @@ dist/*
 native/**/target
 native/target-rust-analyzer
 native/**/.build
+
+# ito-groq writes these next to the exe; ito.ini holds the Groq API key
+ito.ini
+ito.log
 out.json
 tsconfig.node.tsbuildinfo
 server/deploy-dev.sh
