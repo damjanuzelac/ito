@@ -5,6 +5,11 @@ metadata:
   type: project
 ---
 
+**This applies only to the archived `ito-tray`.** The active app,
+`native/ito-groq`, has no local model and therefore needs none of the below —
+plain `cargo build --release -p ito-groq` with the MSVC toolchain is enough
+(~1 min from cold, 4.4 MB exe).
+
 Building `native/ito-tray` on this Windows machine (MSVC, Ryzen 7 3700X) requires CMake and LLVM/Clang for whisper-rs. They were installed via winget (`Kitware.CMake`, `LLVM.LLVM`) but are **not on the persistent PATH** — each build shell must prepend them and set libclang:
 
 ```

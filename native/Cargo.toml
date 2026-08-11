@@ -5,6 +5,10 @@ members = [
     "text-writer",
     "active-application",
     "selected-text-reader",
+    "ito-groq",
+    # Archived: the local-first predecessor of ito-groq. Kept building so the
+    # whisper.cpp / model-download / history code stays compilable if it is
+    # ever needed again. See native/ito-tray/README.md.
     "ito-tray",
 ]
 

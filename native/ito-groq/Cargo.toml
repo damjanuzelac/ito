@@ -1,0 +1,39 @@
+[package]
+name = "ito-groq"
+version = "0.1.0"
+edition = "2021"
+
+# The binary is called `ito` so the Startup shortcut and Task Manager entry
+# stay short.
+[[bin]]
+name = "ito"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+crossbeam-channel = "0.5"
+dirs = "5"
+serde = { workspace = true }
+toml = "0.8"
+ureq = "2"
+
+audio-recorder = { path = "../audio-recorder" }
+global-key-listener = { path = "../global-key-listener" }
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = "5.0"
+tao = "0.30"
+tray-icon = "0.19"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Console",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+tauri-winres = "0.3.5"
+
+[lints]
+workspace = true

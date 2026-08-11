@@ -1,21 +1,34 @@
 ---
 name: ito-tray-next-steps
-description: Agreed follow-up work on ito-tray after the CUDA/Groq/overlay round (July 2026)
+description: State of the dictation apps after ito-groq replaced ito-tray (August 2026)
 metadata:
   type: project
 ---
 
-Next steps for `native/ito-tray`, agreed 2026-07-22 after GPU + Groq work landed:
+**Superseded on 2026-08-11.** `native/ito-tray` is archived; the active
+dictation app is `native/ito-groq` (single `ito.exe` + `ito.ini`, transcription
+through the Groq API only). Local/offline dictation is delegated to
+[handy.computer](https://handy.computer) rather than maintained here.
 
-1. ~~**Redo the REC overlay visuals**~~ — **done**: replaced with a
-   sound-reactive level bar above the taskbar (premultiplied-BGRA DIB through
-   `UpdateLayeredWindow`, so it has real per-pixel alpha and anti-aliased caps).
-2. **Easier online/local switching** — choosing between the Groq API and the
-   local CUDA model currently means hand-editing `provider` in config.toml and
-   restarting. Should be a tray-menu toggle that applies without a restart.
-   (The Language submenu added in the same round is the pattern to copy.)
-3. ~~**Pin HR/EN language selection**~~ — **done**: a Language submenu in the
-   tray writes `language` to the config and applies immediately.
+The July 2026 follow-up list is closed:
 
-Context: transcription now runs on the GPU (see [[ito-tray-windows-build]]);
-`large-v3-turbo` is the active model (~1.6 GB in VRAM of the RTX 2060 SUPER's 8 GB).
+1. ~~Redo the REC overlay visuals~~ — done, and the sound-reactive bar carried
+   over to `ito-groq` unchanged.
+2. ~~Easier online/local switching~~ — **moot**: `ito-groq` has no local
+   provider to switch to.
+3. ~~Pin HR/EN language selection~~ — done, carried over (tray menu writes
+   `language` to `ito.ini`, applies without a restart, `auto` is the default).
+
+Open items for `ito-groq`:
+
+- **Measure before optimizing further.** Every dictation appends a timing line
+  to `ito.log` beside the ini (`rec / prep / groq / type / total`). Only if
+  upload dominates is FLAC-instead-of-WAV or a chunked streaming upload worth
+  building — both were deliberately left out of v1.
+- **Rotate the Groq API key.** The old one lived in
+  `%APPDATA%\Ito-tray\config.toml` and was pasted into a chat session.
+- **Copy `ito.exe` somewhere stable** outside `native/target/` and add a
+  `shell:startup` shortcut.
+- The NeMo Croatian ASR question is only relevant to a local engine, so it no
+  longer applies to this app. See [[ito-tray-windows-build]] for how to build
+  the archived local version if that ever changes.

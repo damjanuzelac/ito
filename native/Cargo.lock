@@ -1919,6 +1919,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-groq"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "audio-recorder",
+ "clipboard-win",
+ "crossbeam-channel",
+ "dirs 5.0.1",
+ "global-key-listener",
+ "serde",
+ "tao",
+ "tauri-winres",
+ "toml 0.8.2",
+ "tray-icon",
+ "ureq",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "ito-tray"
 version = "0.1.0"
 dependencies = [

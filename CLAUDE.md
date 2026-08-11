@@ -65,7 +65,8 @@ cargo test
 - `text-writer` - Cross-platform text input simulation (lib + bin)
 - `active-application` - Active window detection
 - `selected-text-reader` - Selected text extraction (macOS/Windows only; does not compile on Linux)
-- `ito-tray` - Standalone Windows tray app: the whole dictation pipeline in one .exe with embedded whisper.cpp (see native/ito-tray/README.md). Excluded from the MinGW cross-compile CI check; build with MSVC on Windows.
+- `ito-groq` - Standalone Windows tray app: the whole dictation pipeline in one .exe, transcribing through the Groq API (see native/ito-groq/README.md). No local model, so it builds with plain MSVC. This is the active dictation app.
+- `ito-tray` - **Archived** predecessor of `ito-groq`: same app with in-process whisper.cpp, model downloading, SQLite history and LLM edit mode. Kept compiling as a reference, not developed. Excluded from the MinGW cross-compile CI check; build with MSVC on Windows.
 
 ### Linting and Formatting
 
