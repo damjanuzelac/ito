@@ -1,4 +1,16 @@
-# Ito Tray
+# Ito Tray (archived)
+
+> **This crate is no longer developed.** The active app is
+> [`ito-groq`](../ito-groq/README.md), which does the same job through the Groq
+> API — no local model, no CUDA, no database. For offline dictation use
+> [handy.computer](https://handy.computer) rather than this.
+>
+> It is kept here, still compiling, so the parts `ito-groq` deliberately does
+> not have never need writing again: in-process whisper.cpp with optional CUDA
+> (`src/whisper.rs`), ggml model downloading (`src/model_download.rs`), the
+> SQLite dictation history (`src/history.rs`), the "hey ito" LLM edit mode
+> (`src/prompt.rs`, `groq::adjust_transcript`) and local language detection
+> restricted to a candidate list.
 
 A **standalone Windows tray application** for local voice dictation — the
 whole Ito pipeline in a single `.exe`, with no Electron, no server and no
