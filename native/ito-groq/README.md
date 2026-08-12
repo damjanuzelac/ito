@@ -67,6 +67,12 @@ A thin bar appears just above the taskbar and breathes while the microphone is
 open. It is click-through, so it never gets in the way. The tray icon turns red
 while recording and amber while transcribing.
 
+That tray icon is drawn at runtime as a plain filled circle rather than being
+the app icon, because its **colour is the status** — a static logo there would
+say nothing. The Ito logo (`icon.ico`, the same one the Electron app uses) is
+embedded in the exe instead, where Explorer, the taskbar, Alt+Tab and the
+Startup shortcut all pick it up.
+
 ## Speed
 
 Every dictation logs where its time went:
@@ -119,6 +125,7 @@ cargo run -p ito-groq -- --transcribe-file clip.wav   # 16 kHz mono, no mic need
 | `src/audio.rs` | Enhancement, WAV encoding, the loudness gate |
 | `src/overlay.rs` | The recording bar |
 | `src/tray.rs` | Tray icon and menu |
+| `icon.ico` | App icon, embedded into the exe by `build.rs` |
 
 Microphone capture and the global key hook come from the sibling crates
 `audio-recorder` and `global-key-listener`; they are statically linked, so the

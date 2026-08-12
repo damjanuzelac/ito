@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="824" height="824" viewBox="0 0 824 824" role="img" aria-label="Ito">
+  <title>Ito</title>
+  <defs>
+    <!-- Diagonal wash, brightest at the top-left corner and black by roughly
+         78% along the axis. Fitted to resources/build/icon.png. -->
+    <linearGradient id="ito-bg" x1="0" y1="0" x2="0.405" y2="0.665">
+      <stop offset="0" stop-color="#343434"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="824" height="824" rx="182" fill="url(#ito-bg)"/>
+
+  <!-- Two rings whose centrelines are exactly tangent: the centres sit 277.9
+       apart against radii 166.5 + 111 = 277.5. Each arc stops at that meeting
+       point, so the strokes join tangentially into one continuous band and the
+       remaining third of each circle is simply absent. That opening is what
+       makes the mark read as a single looping figure rather than two rings.
+         large: centre 482,341    r 166.5  drawn 165.25deg -> 135.5deg
+         small: centre 285.5,537.5 r 111   drawn 0.5deg -> 322.25deg
+       Angles fitted against the raster icon; the two agree to within the
+       antialiasing fringe. -->
+  <g fill="none" stroke="#ffffff" stroke-width="55">
+    <path d="M320.98 383.39A166.5 166.5 0 1 1 363.24 457.70"/>
+    <path d="M396.50 538.47A111 111 0 1 1 373.28 469.56"/>
+  </g>
+</svg>
