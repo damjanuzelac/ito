@@ -4,6 +4,10 @@ fn main() {
         let mut res = tauri_winres::WindowsResource::new();
 
         res.set_manifest_file("ito.manifest");
+        // Shown in Explorer, the taskbar, Alt+Tab and the Startup shortcut.
+        // A copy of resources/build/icon.ico lives here rather than being
+        // referenced across the tree, so the crate stays self-contained.
+        res.set_icon("icon.ico");
         res.set("FileDescription", "Ito - Groq voice dictation");
         res.set("ProductName", "Ito");
         res.set("CompanyName", "Demox Labs");
